@@ -1,0 +1,161 @@
+---
+title: "Timeline and animation"
+description: "Work with keyframes, interpolation modes, curves, time clips, and playback controls in TiXL's timeline window."
+---
+
+The timeline window is where you animate operator parameters over time. It combines a **dope sheet** view (keyframe positions as diamonds) with a **curve editor** view (value-over-time splines), and a **layers area** for time clips and sequences. The implementation is in `Editor/Gui/Windows/TimeLine/TimeLineCanvas.cs`.
+
+## Time units
+
+TiXL measures time in **bars**, not seconds. The relationship is:
+
+```
+seconds = bars × 240 / BPM
+```
+
+At the default 120 BPM, one bar = 2 seconds. The BPM value is set in the playback controls at the bottom of the timeline. All keyframe positions and loop ranges are stored in bars.
+
+<Info>
+  Operators use `LocalTime` (in bars) from `EvaluationContext` for keyframe-driven parameters. `LocalFxTime` continues advancing during "Idle Motion" (background animation when paused). Most operators should use `LocalFxTime`.
+</Info>
+
+## Timeline views
+
+The timeline canvas (`TimeLineCanvas`) contains three stacked areas:
+
+| Area | Purpose |
+|---|---|
+| **DopeSheetArea** | Overview of all animated parameters as rows of keyframe diamonds |
+| **TimelineCurveEditArea** | Editable spline curves for selected parameters |
+| **LayersArea** | Time clips and sequence blocks placed on named layers |
+
+Switch between dope sheet and curve view by clicking the **curve icon** next to any animated parameter row, or via the view toggle buttons in the timeline toolbar.
+
+## Keyframes (VDefinition)
+
+Every keyframe is a `VDefinition` instance (`Core/Animation/VDefinition.cs`). It stores:
+
+| Property | Type | Description |
+|---|---|---|
+| `U` | `double` | Time position in bars (rounded to `Curve.TimePrecision`) |
+| `Value` | `double` | The parameter value at this time |
+| `InType` / `OutType` | `Interpolation` | Interpolation mode entering and leaving this keyframe |
+| `InEditMode` / `OutEditMode` | `EditMode` | Tangent handle style |
+| `InTangentAngle` / `OutTangentAngle` | `double` | Tangent angles for spline segments |
+| `BrokenTangents` | `bool` | Whether in and out tangents move independently |
+
+### Interpolation modes
+
+```csharp
+public enum Interpolation
+{
+    Constant = 0,
+    Linear,
+    Spline,
+}
+```
+
+| Mode | Behaviour |
+|---|---|
+| **Constant** | Value holds until the next keyframe, then snaps. Useful for discrete state changes. |
+| **Linear** | Straight-line interpolation between keyframes. No overshoot. |
+| **Spline** | Smooth cubic Hermite curve. Tangent handles control the shape of the curve in and out of the keyframe. |
+
+Each keyframe has independent `InType` and `OutType`, so you can have a smooth arrival (`Spline` in) with an instant departure (`Constant` out).
+
+### Tangent edit modes
+
+```csharp
+public enum EditMode
+{
+    Linear    = 0,
+    Smooth    = 1,
+    Horizontal = 2,
+    Tangent   = 3,
+    Constant  = 4,
+    Cubic     = 5,
+}
+```
+
+In the curve editor, tangent handles are shown when `InType` or `OutType` is `Spline`. The `EditMode` controls how the handle behaves when dragged:
+
+- **Smooth** — keeps the tangent angle continuous across the keyframe (default).
+- **Horizontal** — locks the tangent to zero slope (ease in/ease out).
+- **Tangent** — freely adjustable angle.
+- **Cubic** — weighted tangent (requires `Weighted = true`).
+
+## Adding keyframes
+
+<Steps>
+  <Step title="Select a parameter">
+    Click a node in the graph to select it. Its parameters appear in the Parameter window.
+  </Step>
+  <Step title="Right-click the parameter">
+    Right-click any numeric parameter label in the Parameter window and choose **Add keyframe at current time** — or press **K** while the parameter field is focused.
+  </Step>
+  <Step title="Move the time cursor">
+    Drag the playhead in the timeline, change the parameter value, and press **K** again to add a second keyframe. The parameter row appears in the dope sheet.
+  </Step>
+  <Step title="Switch to curve view (optional)">
+    Click the curve icon next to the parameter row in the dope sheet to open the curve editor and adjust tangent handles.
+  </Step>
+</Steps>
+
+## Editing curves
+
+In curve editor view:
+
+- **Click** a keyframe diamond to select it.
+- **Drag** a keyframe to move it in time and value simultaneously.
+- **Ctrl+drag** to constrain movement to one axis.
+- **Right-click** a keyframe to set its interpolation mode.
+- **Drag tangent handles** (the lines extending from a selected Spline keyframe) to adjust the curve shape.
+- **Box-select** multiple keyframes to move or delete them together.
+
+<Tip>
+  Hold **Shift** while dragging keyframes to snap to the timeline raster (bar/beat grid).
+</Tip>
+
+## Time clips
+
+Time clips are operator instances that implement the `TimeClip` interface. They appear as colored blocks in the **LayersArea** of the timeline.
+
+Each clip has a `TimeRange` (`Core/Animation/TimeRange.cs`) with a `Start` and `End` in bars. Operators that play back content (video, audio, sub-compositions) read their local time relative to the clip range. Clips can be:
+
+- **Dragged** to reposition on the timeline.
+- **Trimmed** by dragging the clip edges.
+- **Overlapped** with other clips on the same or different layers.
+
+## Playback controls
+
+The timeline toolbar provides:
+
+| Control | Function |
+|---|---|
+| **Play / Pause** | Start or stop playback (**Space** in the graph or timeline) |
+| **Loop range** | Drag the loop bar ends to set the region that repeats during playback |
+| **BPM** | Set the project tempo; all bar-based times recalculate accordingly |
+| **Jump to start** | Return the playhead to time 0 |
+| **Idle Motion** | Keep `FxTime` advancing even when the timeline is paused (for background animations) |
+
+The `Playback` class (`Core/Animation/Playback.cs`) exposes:
+
+```csharp
+public double TimeInBars { get; set; }       // primary timeline position
+public double FxTimeInBars { get; set; }      // advances during idle motion
+public double Bpm { get; set; }               // default 120.0
+public TimeRange LoopRange;                   // current loop in/out points
+public double PlaybackSpeed { get; set; }     // 0 = paused, 1 = normal
+```
+
+<AccordionGroup>
+  <Accordion title="How do I loop a section of the timeline?">
+    Drag the **loop range** markers (the small handles at the top of the timeline ruler) to define the in and out points. Enable looping with the loop button in the playback controls. The `Playback.LoopRange` struct stores `Start` and `End` in bars.
+  </Accordion>
+  <Accordion title="What is the difference between LocalTime and FxTime?">
+    `LocalTime` advances only when the timeline is playing and is used for keyframe-driven animation — it matches the playhead position. `LocalFxTime` keeps advancing even when paused if **Idle Motion** is enabled, making it suitable for continuous effects like oscillators and counters that should never freeze.
+  </Accordion>
+  <Accordion title="How do I remove all keyframes from a parameter?">
+    Right-click the parameter label in the Parameter window and choose **Remove animation**. This deletes all keyframes from the parameter's curve and returns it to its static value.
+  </Accordion>
+</AccordionGroup>

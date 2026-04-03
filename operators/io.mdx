@@ -1,0 +1,149 @@
+---
+title: "I/O operators"
+description: "Input and output operators for connecting TiXL to audio, MIDI, OSC, DMX, video, files, networks, and hardware devices."
+---
+
+I/O operators connect TiXL to the outside world. They receive data from external sources — hardware devices, network protocols, files, and live signals — and expose that data as typed outputs that can drive any parameter in the graph. Several also support sending data back out, enabling TiXL to control external systems.
+
+<Tip>
+I/O operator values update each frame in sync with the render loop. Use animation curves, smoothing operators, or `TemporalAccumulation` if you need to filter or ease incoming data before using it to drive visual parameters.
+</Tip>
+
+## Subcategories
+
+<AccordionGroup>
+  <Accordion title="audio — audio playback and analysis">
+    | Operator | Description |
+    |----------|-------------|
+    | `AudioPlayer` | Plays an audio file with transport control (play, pause, loop, seek). Outputs current playhead position and playback state. |
+    | `AudioReaction` | Analyses the current audio output and exposes band energy as float outputs for driving visuals reactively. |
+    | `AudioToneGenerator` | Generates a pure sine/square/sawtooth tone at a given frequency and amplitude. |
+    | `SpatialAudioPlayer` | Plays audio with 3D spatial positioning based on a world-space transform. |
+    | `SpatialAudioPlayerGizmo` | Debug gizmo that visualizes spatial audio source positions in the 3D viewport. |
+  </Accordion>
+
+  <Accordion title="midi — MIDI device input and output">
+    | Operator | Description |
+    |----------|-------------|
+    | `MidiInput` | Receives MIDI messages from a device. Outputs note, velocity, controller number, and controller value. Filter by channel and message type. |
+    | `MidiClip` | Plays back a MIDI clip file, outputting notes and controller events over time. |
+    | `MidiRecording` | Records incoming MIDI events to a clip for later playback. |
+    | `LinkToMidiTime` | Synchronises TiXL's transport to incoming MIDI Time Code (MTC). |
+    | `MidiOutput` | Sends raw MIDI bytes to an output device. |
+    | `MidiControlOutput` | Sends a MIDI Control Change (CC) message on trigger. |
+    | `MidiNoteOutput` | Sends a MIDI Note On/Off message on trigger. |
+    | `MidiPitchbendOutput` | Sends a MIDI Pitchbend message. |
+    | `MidiTriggerOutput` | Pulses a MIDI message each time a boolean trigger rises. |
+    | `MidiSysexOutput` | Sends a MIDI System Exclusive (SysEx) byte sequence. |
+  </Accordion>
+
+  <Accordion title="osc — Open Sound Control">
+    | Operator | Description |
+    |----------|-------------|
+    | `OscInput` | Listens for OSC messages on a UDP port. Outputs the received float, int, or string value filtered by OSC address pattern. |
+    | `OscOutput` | Sends an OSC message to a target host and port on trigger. |
+  </Accordion>
+
+  <Accordion title="dmx — DMX512 and Art-Net lighting control">
+    | Operator | Description |
+    |----------|-------------|
+    | `ArtnetInput` | Receives Art-Net (DMX over Ethernet) universes and exposes channel values. |
+    | `ArtnetOutput` | Transmits Art-Net universes to lighting fixtures on the network. |
+    | `SacnInput` | Receives sACN (E1.31 Streaming ACN) DMX data. |
+    | `SacnOutput` | Transmits sACN DMX data to the network. |
+    | `DMXOutput` | Sends raw DMX512 data over a physical DMX interface. |
+    | `PointsToDMXLights` | Maps a `BufferWithViews` point list (position + color) to DMX fixture channel data. |
+  </Accordion>
+
+  <Accordion title="file — reading and writing files">
+    | Operator | Description |
+    |----------|-------------|
+    | `ReadFile` | Reads a text or binary file from disk and exposes its content as a `string`. Watches for changes and reloads automatically. |
+    | `WriteToFile` | Writes a `string` value to disk on trigger. |
+    | `FilesInFolder` | Lists all files matching a pattern in a directory and exposes them as a string list. |
+  </Accordion>
+
+  <Accordion title="video — video playback and camera input">
+    | Operator | Description |
+    |----------|-------------|
+    | `PlayVideo` | Plays a video file and outputs each frame as a `Texture2D`. Supports loop, seek, and playback rate. |
+    | `PlayVideoClip` | Plays a `VideoClip` asset reference (for asset-pipeline based video management). |
+    | `VideoClip` | Defines a named video asset reference for use with `PlayVideoClip`. |
+    | `VideoDeviceInput` | Captures frames from a webcam or capture card as a `Texture2D`. |
+    | `VideoStreamInput` | Receives an RTSP or other network video stream as a `Texture2D`. |
+    | `PlayAudioClip` | Plays an audio clip asset in sync with video or independent of it. |
+    | `CameraCalibrator` | Computes lens distortion correction parameters for a physical camera. |
+  </Accordion>
+
+  <Accordion title="http — HTTP and JSON">
+    | Operator | Description |
+    |----------|-------------|
+    | `WebServer` | Starts a local HTTP server that serves TiXL output or custom content. |
+    | `RequestUrl` | Performs an HTTP GET request to a URL and exposes the response body as a `string`. |
+    | `GetAttributeFromJsonString` | Parses a JSON string and extracts a value at a given path. |
+  </Accordion>
+
+  <Accordion title="tcp — TCP networking">
+    | Operator | Description |
+    |----------|-------------|
+    | `TcpClient` | Opens a TCP connection to a remote host and port. Sends data on trigger, exposes received data as a `string`. |
+    | `TcpServer` | Listens for incoming TCP connections and exposes received data. |
+  </Accordion>
+
+  <Accordion title="udp — UDP networking">
+    | Operator | Description |
+    |----------|-------------|
+    | `UDPInput` | Listens for UDP datagrams on a port and exposes the payload as a `string`. |
+    | `UDPOutput` | Sends a UDP datagram to a target host and port on trigger. |
+  </Accordion>
+
+  <Accordion title="websocket — WebSocket networking">
+    | Operator | Description |
+    |----------|-------------|
+    | `WebSocketClient` | Connects to a WebSocket server. Sends messages on trigger, exposes received messages. |
+    | `WebSocketServer` | Hosts a WebSocket server. Broadcasts to all connected clients on trigger. |
+  </Accordion>
+
+  <Accordion title="serial — serial and USB device communication">
+    | Operator | Description |
+    |----------|-------------|
+    | `SerialInput` | Reads bytes from a COM/serial port. Useful for Arduino, microcontroller sensors, and USB-serial devices. |
+    | `SerialOutput` | Writes bytes to a COM/serial port on trigger. |
+  </Accordion>
+
+  <Accordion title="freed — FreeD camera tracking protocol">
+    FreeD is a professional protocol for broadcasting real-time camera position and orientation data from tracking systems (Stype, Mo-Sys, etc.) to graphics engines.
+
+    | Operator | Description |
+    |----------|-------------|
+    | `FreeDInput` | Receives FreeD UDP packets and exposes pan, tilt, roll, x, y, z, zoom, and focus as float outputs. |
+    | `FreeDOutput` | Sends FreeD position/orientation data to a downstream system. |
+  </Accordion>
+
+  <Accordion title="posistage — PosiStageNet tracking">
+    PosiStageNet (PSN) is an open protocol for tracking moving objects (performers, lights, robots) on stage.
+
+    | Operator | Description |
+    |----------|-------------|
+    | `PosiStageInput` | Receives PSN tracker positions and exposes each tracked object as a point in a `BufferWithViews`. |
+    | `PosiStageOutput` | Sends position data out in PSN format. |
+  </Accordion>
+
+  <Accordion title="ptz — PTZ camera control">
+    PTZ (Pan-Tilt-Zoom) operators send control commands to remotely operated cameras.
+
+    | Operator | Description |
+    |----------|-------------|
+    | `ViscaCamera` | Controls a VISCA-protocol PTZ camera over serial or UDP. Parameters: pan, tilt, zoom speed and absolute position. |
+    | `OnvifCamera` | Controls an ONVIF-compatible IP camera. |
+  </Accordion>
+
+  <Accordion title="input — keyboard, mouse, and gamepad">
+    | Operator | Description |
+    |----------|-------------|
+    | `KeyboardInput` | Returns a `bool` that is true while a specified key is held down. |
+    | `KeyboardInputAsInt` | Returns a `float` value (0 or 1) for a key press, suitable for numeric inputs. |
+    | `MouseInput` | Exposes mouse cursor position (normalized `Vector2`) and button states. |
+    | `Gamepad` | Reads axes and buttons from a connected gamepad/controller. |
+  </Accordion>
+</AccordionGroup>

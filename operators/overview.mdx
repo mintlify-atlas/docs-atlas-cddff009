@@ -1,0 +1,78 @@
+---
+title: "Operator overview"
+description: "An introduction to TiXL operators — what they are, how to find them, and how data flows between categories."
+---
+
+Operators are the building blocks of every TiXL composition. Each operator is a **node in the graph** that receives typed inputs, processes data, and produces typed outputs on every frame. Connecting operator outputs to inputs creates a data-flow graph that TiXL evaluates in real time at render time.
+
+## Finding operators
+
+Open the **Symbol Library** by right-clicking anywhere on the canvas, or pressing **Ctrl+Enter**. You can browse by category or type to search by name. Selecting an operator from the library places it on the canvas at the cursor position.
+
+<Tip>
+Start typing immediately after opening the Symbol Library to filter operators by name. Partial matches work — typing `blur` shows `Blur`, `FastBlur`, `DirectionalBlur`, and `MotionBlur`.
+</Tip>
+
+## Naming convention
+
+Every built-in operator follows the naming pattern:
+
+```
+lib.<category>.<subcategory>.<Name>
+```
+
+For example:
+- `lib.image.generate.basic.RenderTarget`
+- `lib.mesh.generate.SphereMesh`
+- `lib.point.sim.PointSimulation`
+- `lib.particle.ParticleSystem`
+- `lib.io.midi.MidiInput`
+
+The `lib` prefix denotes the built-in standard library. User-created operators follow the same dotted namespace convention under a custom prefix.
+
+## Data types
+
+Operators are typed — outputs and inputs only connect when their data types match. The most common types flowing between operators are:
+
+| Type | Description |
+|------|-------------|
+| `Command` | A deferred draw/render command. Render operators pass these down a scene tree. |
+| `Texture2D` | A GPU texture. Used by image operators and consumed by material/draw operators. |
+| `MeshBuffers` | Vertex + index buffer pair representing 3D geometry. |
+| `BufferWithViews` | A generic structured GPU buffer, used for point lists and particle buffers. |
+| `float` | A single floating-point scalar value. |
+| `Vector2` / `Vector3` / `Vector4` | 2D, 3D, and 4D float vectors. |
+| `bool` | A boolean toggle. |
+| `int` | Integer value, often used for enum-style selections. |
+| `string` | Text data. |
+
+<Note>
+The graph editor colour-codes connection wires by type. Hover any connection to see its type in the tooltip.
+</Note>
+
+## How to read this reference
+
+The reference is organised by the top-level category of each operator. Each category page lists its subcategories and the operators within them. Where operator parameters are discussed, they correspond directly to the `[Input(...)]` fields visible in the **Parameters panel** when an operator is selected.
+
+## Categories
+
+<CardGroup cols={2}>
+  <Card title="Render" icon="cube" href="/operators/render">
+    Draw calls, cameras, lighting, post-processing, and scene composition.
+  </Card>
+  <Card title="Image" icon="image" href="/operators/image">
+    2D texture generation, effects, colour correction, and analysis.
+  </Card>
+  <Card title="Mesh" icon="shapes" href="/operators/mesh">
+    3D geometry creation, deformation, and UV manipulation.
+  </Card>
+  <Card title="Point" icon="circle-dot" href="/operators/point">
+    GPU point-cloud generation, simulation, and rendering.
+  </Card>
+  <Card title="Particle" icon="sparkles" href="/operators/particle">
+    GPU-accelerated particle system with a rich force library.
+  </Card>
+  <Card title="I/O" icon="plug" href="/operators/io">
+    Audio, MIDI, OSC, DMX, video, network, and device input/output.
+  </Card>
+</CardGroup>

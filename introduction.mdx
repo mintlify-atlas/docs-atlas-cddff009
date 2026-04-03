@@ -1,0 +1,62 @@
+---
+title: "Introduction"
+description: "TiXL is an open source realtime motion graphics tool combining node-based procedural content, keyframe animation, and DirectX 11 rendering."
+---
+
+TiXL is an open source software for creating realtime motion graphics. It targets the sweet spot between real-time rendering, graph-based procedural content generation, and linear keyframe animation — giving artists the flexibility to build anything from reactive VJ visuals to precisely timed motion graphics sequences.
+
+## What TiXL is
+
+At its core, TiXL is a **node-based compositor and animation environment** running on DirectX 11. You build visuals by connecting operators in a graph canvas. Each operator is a self-contained computation: a mesh generator, a shader effect, a texture transform, a math node. Connecting operators creates a live evaluation graph that renders in real time.
+
+Keyframe animation runs alongside the graph. You can animate any operator parameter on a timeline, combine keyframes with procedural automation, or drive parameters from audio analysis and external signals — all at the same time.
+
+## Who it's for
+
+- **VJs and live performers** who need audio-reactive visuals that respond to music in real time
+- **Motion designers** who want procedural, non-destructive workflows with timeline-based control
+- **Technical artists** who write HLSL shaders, build custom operators, or integrate hardware controllers
+- **Creative tinkerers** exploring generative art, data visualization, or interactive installations
+
+## Key capabilities
+
+**Rendering and shaders**
+DirectX 11 rendering pipeline with support for fragment shaders, compute shaders, and full HLSL shader authoring directly inside the editor. Color correction, tone mapping, and scopes are built in.
+
+**Audio reactivity**
+Audio analysis operators expose frequency bands, beat detection, and amplitude envelopes as graph values you can wire into any parameter.
+
+**External I/O**
+Connect MIDI controllers, send and receive OSC messages, and integrate DMX for lighting control. Spout and NDI output let you route frames to other applications and network endpoints.
+
+**Standalone export**
+Package a finished project as a small self-contained executable (the Player). The exported binary embeds your operator graph and assets, and accepts command-line flags for resolution, windowed mode, vsync, and looping.
+
+**HLSL shader development**
+Write and hot-reload HLSL shaders without leaving TiXL. The built-in shader compiler gives live feedback on errors.
+
+## Get started
+
+<CardGroup cols={2}>
+  <Card title="Installation" icon="download" href="/installation">
+    Download TiXL from GitHub releases or build from source.
+  </Card>
+  <Card title="Quickstart" icon="play" href="/quickstart">
+    Create your first animated scene in under five minutes.
+  </Card>
+  <Card title="How TiXL works" icon="diagram-project" href="/concepts/how-tixl-works">
+    Understand the operator graph, symbols, and the evaluation model.
+  </Card>
+  <Card title="Operator reference" icon="cubes" href="/operators/overview">
+    Browse the built-in operator library.
+  </Card>
+</CardGroup>
+
+## Community and license
+
+TiXL is released under the **MIT license**. You can use it freely in personal and commercial projects, modify the source, and redistribute it.
+
+Join the community on Discord to ask questions, share work, and follow development:
+[discord.gg/YmSyQdeH3S](https://discord.gg/YmSyQdeH3S)
+
+The source code is hosted at [github.com/tixl3d/tixl](https://github.com/tixl3d/tixl).

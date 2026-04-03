@@ -1,0 +1,290 @@
+---
+title: "Writing operators"
+description: "Step-by-step guide for creating a new TiXL operator: class structure, slot declarations, metadata files, shaders, and registration."
+---
+
+This guide walks through creating a new operator from scratch. The example builds a simple mesh generator similar to the operators in `Operators/Lib/mesh/generate/`.
+
+<Info>
+Before starting, read [Operator conventions](/dev/operator-conventions) for the rules all operators must follow, and [Core runtime](/dev/core-runtime) for an explanation of the Symbol/Instance model and slot system.
+</Info>
+
+## Steps
+
+<Steps>
+  <Step title="Choose the right package">
+    Decide where your operator belongs:
+
+    - `Operators/Lib/` — built-in operators shipped with TiXL. Organized by category: `mesh/generate/`, `render/basic/`, `image/generate/`, `math/`, etc.
+    - `Operators/TypeOperators/` — foundational type-building operators (value types, collection types, GFX primitives).
+    - `Operators/Examples/` — reference compositions and example usage patterns.
+    - A custom package — for project-specific or integration operators that should not ship in the core library.
+
+    Place your `.cs` file in the directory that matches your intended namespace. A file at `Operators/Lib/mesh/generate/MyMesh.cs` must use `namespace Lib.mesh.generate;`.
+  </Step>
+  <Step title="Create the C# file">
+    Create `MyMesh.cs` in the appropriate directory. The class must:
+
+    - Be annotated with `[Guid("...")]` — generate a new GUID (Visual Studio: **Tools → Create GUID**, or `Guid.NewGuid()` in a scratch pad).
+    - Be `internal sealed`.
+    - Inherit from `Instance<T>` where `T` is your class.
+
+    ```csharp
+    namespace Lib.mesh.generate;
+
+    [Guid("xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx")]
+    internal sealed class MyMesh : Instance<MyMesh>
+    {
+    }
+    ```
+  </Step>
+  <Step title="Declare output slots">
+    Add `public readonly Slot<T>` fields annotated with `[Output(Guid = "...")]`. Each slot needs its own stable GUID.
+
+    ```csharp
+    [Output(Guid = "yyyyyyyy-yyyy-yyyy-yyyy-yyyyyyyyyyyy")]
+    public readonly Slot<MeshBuffers> Data = new();
+    ```
+
+    Wire the output to its update method in the constructor:
+
+    ```csharp
+    public MyMesh()
+    {
+        Data.UpdateAction += Update;
+    }
+    ```
+  </Step>
+  <Step title="Declare input slots">
+    Add `public readonly InputSlot<T>` fields annotated with `[Input(Guid = "...")]`. Each needs its own GUID.
+
+    ```csharp
+    [Input(Guid = "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa")]
+    public readonly InputSlot<float> Scale = new();
+
+    [Input(Guid = "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb")]
+    public readonly InputSlot<Vector3> Center = new();
+    ```
+
+    For enum-backed integer inputs, provide `MappedType` so the editor renders a dropdown:
+
+    ```csharp
+    [Input(Guid = "cccccccc-cccc-cccc-cccc-cccccccccccc", MappedType = typeof(MyModes))]
+    public readonly InputSlot<int> Mode = new();
+    ```
+  </Step>
+  <Step title="Implement Update()">
+    Implement `private void Update(EvaluationContext context)`. This method is called by the slot's dirty-flag system whenever the output needs to be recomputed.
+
+    Rules:
+    - Read inputs with `slot.GetValue(context)`.
+    - Write the result to `OutputSlot.Value`.
+    - Call `OutputSlot.DirtyFlag.Clear()` at the end.
+    - No heap allocations, no LINQ. Pre-allocate buffers as private fields and resize only when dimensions change.
+
+    ```csharp
+    private void Update(EvaluationContext context)
+    {
+        var scale  = Scale.GetValue(context);
+        var center = Center.GetValue(context);
+
+        var vertexCount = 4; // example: a fixed quad
+
+        if (_vertices.Length != vertexCount)
+            _vertices = new PbrVertex[vertexCount];
+
+        // fill _vertices ...
+
+        ResourceManager.SetupStructuredBuffer(
+            _vertices,
+            PbrVertex.Stride * vertexCount,
+            PbrVertex.Stride,
+            ref _vertexBuffer);
+
+        ResourceManager.CreateStructuredBufferSrv(_vertexBuffer, ref _bufferViews.Srv);
+        _bufferViews.Buffer = _vertexBuffer;
+
+        _meshData.VertexBuffer = _bufferViews;
+        Data.Value = _meshData;
+        Data.DirtyFlag.Clear();
+    }
+    ```
+  </Step>
+  <Step title="Add private fields at the end">
+    Place all private pre-allocated buffers and data objects at the **end** of the class, prefixed with `_`:
+
+    ```csharp
+    private Buffer _vertexBuffer;
+    private PbrVertex[] _vertices = new PbrVertex[0];
+    private readonly BufferWithViews _bufferViews = new();
+    private readonly MeshBuffers _meshData = new();
+    ```
+  </Step>
+  <Step title="Create the .t3 metadata file">
+    The `.t3` file describes the symbol structure: its GUID, input/output definitions, and internal child graph. For a new operator with no child nodes, the minimal structure matches the class's `[Guid]` and lists every `[Input]` and `[Output]` annotated field.
+
+    Copy the `.t3` file from a similar existing operator and update:
+    - The top-level `"Id"` to match your class's `[Guid]`.
+    - Each input's `"Id"` to match the corresponding `[Input(Guid = "...")]`.
+    - Each output's `"Id"` to match the corresponding `[Output(Guid = "...")]`.
+    - The `"Namespace"` and `"Name"` fields.
+
+    The editor will regenerate missing or incomplete `.t3` files from the compiled assembly on first load, but providing one explicitly ensures correct default values and ordering.
+  </Step>
+  <Step title="Create the .t3ui file">
+    The `.t3ui` file provides UI hints: parameter group labels, widget types, value ranges, and ordering for the parameter panel. It is optional but recommended for a polished editor experience.
+
+    Again, copy from a similar operator and update the input `Guid` references to match your new inputs.
+  </Step>
+  <Step title="Build and test in the editor">
+    Build the solution and run the Editor project. The compilation system discovers your new class by reflection, constructs a `Symbol` for it, and makes it available in the operator search / asset library. Drag it onto the graph canvas and connect inputs to verify correct behavior.
+
+    If the operator does not appear, check:
+    - The `[Guid]` attribute is present and unique.
+    - The class inherits `Instance<YourClass>` (not a base `Instance`).
+    - The project built successfully with no compile errors.
+  </Step>
+</Steps>
+
+## Complete example
+
+The following is the structure of `QuadMesh`, the simplest two-dimensional mesh generator in `Operators/Lib/mesh/generate/QuadMesh.cs`:
+
+```csharp
+using T3.Core.Rendering;
+using T3.Core.Utils;
+using T3.Core.Utils.Geometry;
+
+namespace Lib.mesh.generate;
+
+[Guid("9d6dbf28-9983-4584-abba-6281ce51d583")]
+internal sealed class QuadMesh : Instance<QuadMesh>
+{
+    [Output(Guid = "9c86f704-a28f-4d2a-b7c0-15648f982462")]
+    public readonly Slot<MeshBuffers> Data = new();
+
+    public QuadMesh()
+    {
+        Data.UpdateAction += Update;
+    }
+
+    private void Update(EvaluationContext context)
+    {
+        var scale    = Scale.GetValue(context);
+        var stretch  = Stretch.GetValue(context);
+        var pivot    = Pivot.GetValue(context);
+        var rotation = Rotation.GetValue(context);
+        var center   = Center.GetValue(context);
+        var segments = Segments.GetValue(context);
+
+        var columns       = segments.Width.Clamp(1, 10000) + 1;
+        var rows          = segments.Height.Clamp(1, 10000) + 1;
+        var faceCount     = (columns - 1) * (rows - 1) * 2;
+        var verticesCount = columns * rows;
+
+        if (_vertexBufferData.Length != verticesCount)
+            _vertexBufferData = new PbrVertex[verticesCount];
+
+        if (_indexBufferData.Length != faceCount)
+            _indexBufferData = new Int3[faceCount];
+
+        // ... fill vertex and index arrays with geometry math ...
+
+        ResourceManager.SetupStructuredBuffer(
+            _vertexBufferData, PbrVertex.Stride * verticesCount,
+            PbrVertex.Stride, ref _vertexBuffer);
+        ResourceManager.CreateStructuredBufferSrv(_vertexBuffer, ref _vertexBufferWithViews.Srv);
+        ResourceManager.CreateStructuredBufferUav(
+            _vertexBuffer, UnorderedAccessViewBufferFlags.None,
+            ref _vertexBufferWithViews.Uav);
+        _vertexBufferWithViews.Buffer = _vertexBuffer;
+
+        const int indexStride = 3 * 4;
+        ResourceManager.SetupStructuredBuffer(
+            _indexBufferData, indexStride * faceCount,
+            indexStride, ref _indexBuffer);
+        ResourceManager.CreateStructuredBufferSrv(_indexBuffer, ref _indexBufferWithViews.Srv);
+        ResourceManager.CreateStructuredBufferUav(
+            _indexBuffer, UnorderedAccessViewBufferFlags.None,
+            ref _indexBufferWithViews.Uav);
+        _indexBufferWithViews.Buffer = _indexBuffer;
+
+        _data.VertexBuffer  = _vertexBufferWithViews;
+        _data.IndicesBuffer = _indexBufferWithViews;
+        Data.Value = _data;
+        Data.DirtyFlag.Clear();
+    }
+
+    [Input(Guid = "18a5f3be-92a7-438c-b32b-e0da7c7a5736")]
+    public readonly InputSlot<Int2> Segments = new();
+
+    [Input(Guid = "0295DD65-95B4-4E02-8D61-4622F59D4FC4")]
+    public readonly InputSlot<Vector2> Stretch = new();
+
+    [Input(Guid = "44fc1e7b-b1d1-4199-b373-8b7c4cc060d2")]
+    public readonly InputSlot<float> Scale = new();
+
+    [Input(Guid = "7F01D9B9-C612-4A2D-A52F-B56C54FB62AF")]
+    public readonly InputSlot<Vector2> Pivot = new();
+
+    [Input(Guid = "B2A1C96A-4AEF-412A-B006-2EF285DD2479")]
+    public readonly InputSlot<Vector3> Center = new();
+
+    [Input(Guid = "A89E41BF-5395-41F0-9804-A782ED4C0F30")]
+    public readonly InputSlot<Vector3> Rotation = new();
+
+    private Buffer _vertexBuffer;
+    private PbrVertex[] _vertexBufferData = new PbrVertex[0];
+    private readonly BufferWithViews _vertexBufferWithViews = new();
+
+    private Buffer _indexBuffer;
+    private Int3[] _indexBufferData = new Int3[0];
+    private readonly BufferWithViews _indexBufferWithViews = new();
+
+    private readonly MeshBuffers _data = new();
+}
+```
+
+## Adding a shader
+
+For operators that dispatch HLSL compute or pixel shaders, the typical pattern is:
+
+1. Place the `.hlsl` file alongside the `.cs` file (or in a shared shader directory).
+2. Create a `Resource<TShader>` via `ResourceManager.CreateShaderResource(...)` — pass the relative path, the owning instance, and a lambda that returns the entry point name.
+3. Hold a pre-allocated constant buffer for shader parameters.
+4. In `Update()`, write parameters to the constant buffer and dispatch / draw.
+
+```csharp
+// In the constructor or a lazy-init path:
+_shader = ResourceManager.CreateShaderResource<ComputeShader>(
+    "lib/my-category/MyShader.hlsl",
+    this,
+    () => "CsMain");
+
+// In Update():
+if (_shader.Value == null)
+    return;
+
+// set constant buffer, bind shader, dispatch ...
+```
+
+The shader resource is file-watched. Saving the `.hlsl` file while the editor is running triggers automatic recompilation and hot-reload — no restart needed.
+
+## How operators are registered
+
+At startup, `Core/Compilation/TixlAssemblyLoadContext` loads each operator package assembly. For every type that is assignable to `Instance`, the runtime:
+
+1. Reads the `[Guid]` attribute to locate the `.t3` metadata file.
+2. Constructs a `Symbol`, populating `InputDefinitions` and `OutputDefinitions` by reflecting over fields annotated with `[Input]` and `[Output]`.
+3. Registers the symbol in the owning `SymbolPackage`'s registry, keyed by GUID.
+
+In the Editor, live recompilation via `Editor/Compilation/Compiler.cs` can hot-swap a symbol's `InstanceType` without losing existing instances or graph connections.
+
+<CardGroup cols={2}>
+  <Card title="Operator conventions" icon="book-open" href="/dev/operator-conventions">
+    Complete rules for file layout, slot naming, and evaluation path constraints.
+  </Card>
+  <Card title="Performance guidelines" icon="gauge" href="/dev/performance-guidelines">
+    How to keep operator update paths allocation-free and frame-time-safe.
+  </Card>
+</CardGroup>

@@ -1,0 +1,109 @@
+---
+title: "Mesh operators"
+description: "3D geometry creation, deformation, UV manipulation, and mesh drawing operators."
+---
+
+Mesh operators work with `MeshBuffers` — a paired GPU vertex buffer and index buffer that describes 3D geometry. Geometry flows from **generate** operators (which create shapes) through **modify** operators (which deform or decorate them) to **draw** operators (which issue GPU draw calls).
+
+<Note>
+`MeshBuffers` carry position, normal, tangent, UV, and vertex-color data per vertex. Modify operators can read and rewrite any of these attributes on the GPU.
+</Note>
+
+## Subcategories
+
+<AccordionGroup>
+  <Accordion title="generate — primitive shapes and procedural geometry">
+    Generate operators produce `MeshBuffers` from scratch. Most expose parameters for subdivision level, orientation, and initial UV layout.
+
+    | Operator | Description |
+    |----------|-------------|
+    | `CubeMesh` | Axis-aligned unit cube. Parameters: `Size` (Vector3), subdivisions per axis. |
+    | `SphereMesh` | UV sphere. Parameters: `Radius`, `Rows`, `Columns`. |
+    | `TorusMesh` | Torus ring. Parameters: `MainRadius`, `TubeRadius`, `Segments`, `Sides`. |
+    | `CylinderMesh` | Cylinder with configurable caps. Parameters: `Radius`, `Height`, `Segments`. |
+    | `QuadMesh` | A single subdivided quad plane. Parameters: `Width`, `Height`, `Rows`, `Columns`. |
+    | `IcosahedronMesh` | Icosahedron (20-face polyhedron), commonly used as a base for sphere subdivision. |
+    | `NGonMesh` | Regular N-sided polygon mesh. |
+    | `DelaunayMesh` | Generates a Delaunay triangulation mesh from a `BufferWithViews` point set. |
+    | `ExtrudeCurves` | Sweeps a profile shape along a curve to create a tube or ribbon mesh. |
+    | `LoadObj` | Loads a Wavefront `.obj` file from disk into `MeshBuffers`. |
+    | `RepeatMeshAtPoints` | Instances a `MeshBuffers` at every position in a `BufferWithViews` point list. |
+  </Accordion>
+
+  <Accordion title="modify — deformers, vertex operations, and UV editing">
+    Modify operators take a `MeshBuffers` input, transform it in some way, and output new `MeshBuffers`.
+
+    **Deformation**
+
+    | Operator | Description |
+    |----------|-------------|
+    | `TransformMesh` | Applies a full 3D transform (translation, rotation, scale) to mesh vertices on the GPU. |
+    | `DeformMesh` | General-purpose vertex deformer driven by noise or custom expressions. |
+    | `DisplaceMesh` | Displaces vertices along their normals using a float value or expression. |
+    | `DisplaceMeshNoise` | Noise-driven vertex displacement with octave control. |
+    | `TextureDisplaceMesh` | Samples a `Texture2D` and uses its luminance to displace vertex positions. |
+    | `DisplaceMeshVAT` | Vertex Animation Texture (VAT) playback: baked animation from a texture. |
+    | `Warp2dMesh` | Warps a flat mesh in 2D space using a displacement field. |
+    | `BlendMeshVertices` | Interpolates vertex positions between two mesh states by a blend factor. |
+    | `BlendMeshToPoints` | Morphs mesh vertices towards corresponding points in a `BufferWithViews`. |
+    | `MoveMeshToPointLine` | Reshapes the mesh so its vertices follow a point-list spline. |
+
+    **Topology and normals**
+
+    | Operator | Description |
+    |----------|-------------|
+    | `CombineMeshes` | Merges two or more `MeshBuffers` into a single mesh. |
+    | `SplitMeshVertices` | Splits shared vertices at face boundaries (for hard normals). |
+    | `CollapseVertices` | Merges vertices within a threshold distance. |
+    | `FlipNormals` | Reverses face winding order and negates normals. |
+    | `RecomputeNormals` | Recomputes smooth or hard normals from face geometry. |
+
+    **Selection and attributes**
+
+    | Operator | Description |
+    |----------|-------------|
+    | `SelectVertices` | Masks vertices by position, normal, or UV region for downstream modifiers. |
+    | `SelectVerticesWithSDF` | Selects vertices that fall within a signed distance field volume. |
+    | `ColorVerticesWithField` | Writes a colour into vertex colour attributes based on a field evaluation. |
+    | `MeshFacesPoints` | Converts mesh face centres to a `BufferWithViews` point list. |
+    | `ScatterMeshFaces` | Randomly scatters points across mesh faces weighted by face area. |
+    | `MeshVerticesToPoints` | *(also in point/generate)* Converts mesh vertices directly to a point list. |
+
+    **UV operations**
+
+    | Operator | Description |
+    |----------|-------------|
+    | `TransformMeshUVs` | Translates, rotates, and scales UV coordinates. |
+    | `MeshProjectUV` | Projects UVs using planar, cylindrical, or spherical projection. |
+    | `VisualizeUvMap` | *(also in mesh/draw)* Renders UV islands for inspection. |
+
+    **Custom shaders**
+
+    | Operator | Description |
+    |----------|-------------|
+    | `CustomVertexShader` | Runs a user-authored HLSL vertex shader on the mesh. |
+    | `CustomFaceShader` | Runs a user-authored geometry/hull shader per face. |
+
+    **Utilities**
+
+    | Operator | Description |
+    |----------|-------------|
+    | `PickMeshBuffer` | Selects one `MeshBuffers` from a list of inputs by index. |
+  </Accordion>
+
+  <Accordion title="draw — mesh rendering operators">
+    Draw operators consume `MeshBuffers` and a material/shading context to issue GPU draw calls, producing `Command` output.
+
+    | Operator | Description |
+    |----------|-------------|
+    | `DrawMesh` | The primary lit PBR mesh draw call. Consumes `MeshBuffers` and the current material state. |
+    | `DrawMeshUnlit` | Draws mesh without lighting — uses only albedo/emissive. |
+    | `DrawMeshWithShadow` | Draws mesh with shadow casting and receiving. |
+    | `DrawMeshCelShading` | Toon/cel-shading draw with configurable step count and outline. |
+    | `DrawMeshHatched` | Cross-hatch stylized rendering. |
+    | `DrawMeshAtPoints` | Draws a mesh instanced at each point in a `BufferWithViews`. |
+    | `DrawMeshChunksAtPoints` | Draws chunks of a mesh at point positions (useful for debris/fragment effects). |
+    | `DrawMeshAtPoints2` | *(also in point/draw)* GPU-instanced mesh drawing from a point list with per-instance attributes. |
+    | `VisualizeUvMap` | Draws the UV layout of a mesh as a flat 2D overlay. |
+  </Accordion>
+</AccordionGroup>

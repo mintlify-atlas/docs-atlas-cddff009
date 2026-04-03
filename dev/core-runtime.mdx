@@ -1,0 +1,196 @@
+---
+title: "Core runtime"
+description: "How TiXL's Core layer works: the Symbol/Instance model, slot system, EvaluationContext, ResourceManager, Animator, and compilation pipeline."
+---
+
+The `Core/` project is the heart of TiXL. It owns the operator graph model, the per-frame evaluation loop, GPU resource management, and animation. Both the Editor and the Player depend on it; neither feeds back into it.
+
+## Symbol and Instance model
+
+The relationship between `Symbol` and `Instance` mirrors the class/object relationship in object-oriented programming.
+
+| Concept | Analogy | Role |
+|---|---|---|
+| `Symbol` | Class | Defines the operator type — its input/output definitions, child graph, and connections |
+| `Instance` | Object | A live node in a running graph; there can be many instances of one symbol |
+
+```csharp
+// Symbol.cs — the operator type definition
+public sealed partial class Symbol : IDisposable, IResource
+{
+    public readonly Guid Id;
+    public readonly List<InputDefinition> InputDefinitions = new();
+    public readonly List<OutputDefinition> OutputDefinitions = new();
+    public readonly List<Connection> Connections = [];
+    public IReadOnlyDictionary<Guid, Child> Children => _children;
+    public Animator Animator { get; private set; } = new();
+    public Type InstanceType { get; private set; }   // the concrete C# class
+}
+```
+
+A `Symbol` holds its graph structure (children, connections, slot definitions) and a reference to the concrete `InstanceType` — the C# class discovered by the compilation system.
+
+```csharp
+// Instance.cs — a live node
+public abstract partial class Instance : IGuidPathContainer, IResourceConsumer
+{
+    public abstract Type Type { get; }
+    public abstract Symbol Symbol { get; }
+    public readonly List<ISlot> Outputs;
+    public readonly List<IInputSlot> Inputs;
+    public IReadOnlyList<Guid> InstancePath { get; private set; }
+    public InstanceChildren Children { get; private set; }
+}
+```
+
+Instances are identified by a stable `InstancePath` (a list of `Guid`s from root to leaf), not by a direct reference. This is important for avoiding stale references across graph reloads.
+
+### SymbolPackage and SymbolRegistry
+
+Every `Symbol` belongs to a `SymbolPackage` (declared in `Core/Model/`). Packages correspond to C# projects (e.g. `Operators/Lib`, `Operators/TypeOperators`). The global registry of all loaded symbols is maintained by the package system and keyed by `Guid`.
+
+## Slot system
+
+Slots are the typed data connectors that wire operators together. There are two categories:
+
+| Type | Direction | Class |
+|---|---|---|
+| `InputSlot<T>` | Receives data | `Core/Operator/Slots/InputSlot.cs` |
+| `Slot<T>` (output) | Produces data | `Core/Operator/Slots/Slot.cs` |
+| `MultiInputSlot<T>` | Receives multiple connections | `Core/Operator/Slots/MultiInputSlot.cs` |
+
+Slots are declared as `public readonly` fields on the operator class:
+
+```csharp
+[Output(Guid = "35660e2b-5005-44a2-bf57-db9a3f1b791d")]
+public readonly Slot<MeshBuffers> Data = new();
+
+[Input(Guid = "9a7d34a1-ca39-48bc-b977-9a786d23f3b1")]
+public readonly InputSlot<float> Scale = new();
+```
+
+### Dirty tracking
+
+Every slot carries a `DirtyFlag` that implements version-chasing synchronization:
+
+```csharp
+// DirtyFlag.cs
+public sealed class DirtyFlag
+{
+    public int SourceVersion = 1; // starts dirty
+    public int ValueVersion;      // matches SourceVersion once evaluated
+
+    public bool IsDirty => TriggerIsEnabled || ValueVersion != SourceVersion;
+
+    public int Invalidate()       // bumps SourceVersion, propagates upstream
+    public void Clear()           // sets ValueVersion = SourceVersion after evaluation
+}
+```
+
+When an upstream slot's value changes, `Invalidate()` is called on it and propagates downstream. During evaluation, the engine only calls `UpdateAction` on a slot if `IsDirty` is true, then calls `Clear()` to mark it up-to-date. This allows TiXL to skip redundant work across frames when inputs have not changed.
+
+After computing a new value in `Update()`, operators must call `Data.DirtyFlag.Clear()` to signal that the output is fresh:
+
+```csharp
+Data.Value = _data;
+Data.DirtyFlag.Clear();
+```
+
+## EvaluationContext
+
+`EvaluationContext` is a per-frame context object passed down through the graph during evaluation. It carries time, playback state, camera matrices, render settings, and named variable dictionaries.
+
+```csharp
+public sealed class EvaluationContext
+{
+    // Timing
+    public Playback Playback { get; private set; }
+    public double LocalTime { get; set; }     // primary timeline time in bars
+    public double LocalFxTime { get; set; }   // continues running in pause mode
+
+    // Render state
+    public Int2 RequestedResolution { get; set; }
+    public Matrix4x4 CameraToClipSpace { get; set; }
+    public Matrix4x4 WorldToCamera { get; set; }
+    public Matrix4x4 ObjectToWorld { get; set; }
+
+    // PBR / lighting
+    public PbrMaterial PbrMaterial { get; set; }
+    public PointLightStack PointLights { get; }
+
+    // Scoped context variables (set/consumed by graph operators)
+    public Dictionary<string, float> FloatVariables { get; }
+    public Dictionary<string, bool>  BoolVariables  { get; }
+    public Dictionary<string, int>   IntVariables   { get; }
+    public Dictionary<string, string> StringVariables { get; }
+    public Dictionary<string, object> ObjectVariables { get; }
+}
+```
+
+`EvaluationContext.Reset()` is called once at the start of each frame to restore default values before the graph is traversed.
+
+<Note>
+`LocalTime` is the primary time used for keyframe interpolation. `LocalFxTime` keeps advancing even when playback is paused (when "Keep Running" is active). Operators that need to animate continuously — like particle systems — should read `LocalFxTime`.
+</Note>
+
+A convenience helper lets operators cheaply test whether time has actually advanced before doing expensive work:
+
+```csharp
+if (!context.HasTimeChanged(ref _lastUpdateTime))
+    return;
+```
+
+## ResourceManager
+
+`ResourceManager` (in `Core/Resource/`) handles GPU resource creation, shader compilation, and lifetime tracking. It is a static class with partial implementations split by resource type.
+
+### Shader loading
+
+```csharp
+// ResourceManager.Shaders.cs
+public static Resource<TShader> CreateShaderResource<TShader>(
+    string relativePath,
+    IResourceConsumer? instance,
+    Func<string> getEntryPoint,
+    Action<TShader?>? onShaderCompiled = null)
+    where TShader : AbstractShader
+```
+
+Shader resources are file-watched. When the `.hlsl` file changes on disk, `ShaderCompiler` recompiles it automatically and invokes `onShaderCompiled`. This powers the live-reload workflow in the editor.
+
+### Buffer management
+
+ResourceManager provides helpers for structured GPU buffers:
+
+```csharp
+ResourceManager.SetupStructuredBuffer(data, totalBytes, stride, ref buffer);
+ResourceManager.CreateStructuredBufferSrv(buffer, ref views.Srv);
+ResourceManager.CreateStructuredBufferUav(buffer, flags, ref views.Uav);
+```
+
+These methods re-use the existing buffer when dimensions match, and reallocate only when the size changes — avoiding unnecessary GPU allocations in per-frame paths.
+
+## Animator
+
+The `Animator` lives on each `Symbol` and manages keyframe animation for that symbol's inputs. It evaluates `VDefinition` curves each frame at `LocalTime` and injects the results into the appropriate `InputSlot<T>` values before the operator's `Update()` runs.
+
+An `InputSlot` is considered animated when `Symbol.Animator.IsInputSlotAnimated(slot)` returns true. Animated slots always report `IsDirty`, ensuring they are re-evaluated every frame.
+
+## Compilation pipeline
+
+At startup, the compilation system discovers all operator C# assemblies and loads them into isolated `TixlAssemblyLoadContext` instances (in `Core/Compilation/`). For each loaded type that inherits from `Instance<T>`, the system:
+
+1. Reads the `[Guid]` attribute on the class to find the corresponding `.t3` metadata file.
+2. Constructs a `Symbol` for that type and registers it in the package's symbol registry.
+3. Reflects over public fields decorated with `[Input]` and `[Output]` to populate `InputDefinition` / `OutputDefinition` lists.
+
+In the Editor, `Editor/Compilation/Compiler.cs` and `ProjectSetup.cs` additionally support live recompilation: when source files change, the C# project is rebuilt, a new assembly is loaded, and symbols are hot-swapped into running instances with their connections preserved.
+
+<CardGroup cols={2}>
+  <Card title="Operator conventions" icon="book-open" href="/dev/operator-conventions">
+    Naming rules, slot conventions, and the patterns every operator must follow.
+  </Card>
+  <Card title="Writing operators" icon="code" href="/dev/writing-operators">
+    End-to-end walkthrough for building a new operator from scratch.
+  </Card>
+</CardGroup>

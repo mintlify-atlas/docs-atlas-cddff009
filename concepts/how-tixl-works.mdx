@@ -1,0 +1,105 @@
+---
+title: "How TiXL works"
+description: "An overview of TiXL's evaluation model, the Symbol/Instance architecture, the real-time rendering loop, and how projects are stored."
+---
+
+TiXL is a real-time motion graphics tool built on C# and DirectX 11. Everything you create lives in a **graph of operators** connected by typed slots. Each frame, the engine walks that graph, evaluates only the operators whose inputs have changed, and submits the result to the DirectX 11 swap chain.
+
+## Evaluation model
+
+At the heart of TiXL is a directed acyclic graph. Operators sit at the nodes; connections carry typed values along the edges. Evaluation is demand-driven: starting from the root output, the engine asks each operator for its current value. An operator asks its upstream connections for their values, and so on, until the entire visible subgraph has been evaluated.
+
+The key steps each frame:
+
+<Steps>
+  <Step title="Global tick incremented">
+    `DirtyFlag.IncrementGlobalTicks()` advances the global version counter. Any slot whose `SourceVersion` exceeds its `ValueVersion` is considered dirty and must recompute.
+  </Step>
+  <Step title="EvaluationContext prepared">
+    A fresh `EvaluationContext` is created (or reset). It carries the current playback time, camera matrices, render-target resolution, lighting state, and per-frame context variables such as `FloatVariables` and `BoolVariables`.
+  </Step>
+  <Step title="Graph traversal">
+    The output slot of the root operator is requested. Each `OutputSlot<T>` checks its `DirtyFlag`. If dirty, it calls the operator's `UpdateAction`, which pulls values from connected `InputSlot<T>`s, performs its computation, and clears the flag.
+  </Step>
+  <Step title="DirectX 11 presentation">
+    The rendered `Texture2D` result is blitted to the output window swap chain. The Dear ImGui editor UI is composed on top in the same device context and presented together.
+  </Step>
+</Steps>
+
+<Note>
+  Time inside `EvaluationContext` is measured in **bars**, not seconds. At the default 120 BPM, one bar equals two seconds. Use `TimeInSecs` only when you need wall-clock values.
+</Note>
+
+## The Symbol / Instance model
+
+TiXL separates the *definition* of an operator from its *live state*:
+
+| Concept | Class | Role |
+|---|---|---|
+| **Symbol** | `T3.Core.Operator.Symbol` | The operator type — stores `InputDefinitions`, `OutputDefinitions`, child `Symbol.Child` references, `Connection` list, and the `Animator` for keyframe data. |
+| **Instance** | `T3.Core.Operator.Instance` | A live node placed in a graph. Holds concrete `InputSlot<T>` and `OutputSlot<T>` objects, a reference back to its `Symbol`, and its position in the instance path (a `Guid[]` chain from root to this node). |
+
+One `Symbol` can have many `Instance`s. Editing the symbol's parameter defaults updates every instance that still holds the default value; overrides on individual instances are stored separately in `Symbol.Child.Input`.
+
+```
+Symbol (DrawMesh)          ← type definition, loaded once
+  ├─ InputDefinition: mesh
+  ├─ InputDefinition: material
+  └─ OutputDefinition: layer
+
+Instance A  (in Scene)     ← live slot state, one per placement
+Instance B  (in Preview)
+```
+
+## Real-time rendering loop
+
+TiXL runs a tight render loop:
+
+1. **Input polling** — platform input events (mouse, keyboard, gamepad) are collected via the SilkWindows / MsForms bridge and fed into Dear ImGui.
+2. **Dear ImGui new frame** — ImGui prepares its draw command list for the editor UI.
+3. **Graph evaluation** — the composition operator tree is evaluated as described above, producing a `Texture2D` output.
+4. **ImGui render** — the editor UI draw lists are submitted to DirectX 11 alongside the output texture.
+5. **Swap chain present** — the frame is presented. The output window can be a separate borderless window driven by the same device.
+
+The editor (`Editor/`) and the standalone player (`Player/`) share the same `Core/` evaluation engine. The player strips all editor UI and runs only the graph evaluation and swap chain present steps.
+
+## Project file format
+
+Projects are stored as `.t3` files using a JSON-based serialization format managed by the `Serialization/` package. Each file represents one `Symbol` definition, including:
+
+- `Id` — the symbol's stable `Guid`
+- `Children` — the list of operator placements with their per-instance input overrides
+- `Connections` — the wiring between child slots
+- `Animator` — keyframe curves for animated parameters
+
+The UI layout (node positions, colors) is stored in companion `.t3ui` files, keeping the runtime data separate from the visual arrangement.
+
+## Operator packages
+
+TiXL organizes operators into packages that are loaded at startup:
+
+| Package | Contents |
+|---|---|
+| `Operators/Lib/` | Primary built-in operators: render, image, mesh, point, particle, IO, math, string, flow |
+| `Operators/TypeOperators/` | Foundational type-building and generic operators |
+| `Operators/Examples/` | Reference compositions demonstrating operator usage |
+| `Mediapipe` | Computer vision and pose/hand tracking integration |
+| `Spout` | Spout2 texture sharing for inter-application video |
+| `NDI` | NDI network video input and output |
+| `unsplash` | Unsplash image API integration |
+
+Each package is a separate C# assembly. Operators within a package are identified by their namespace (e.g., `lib.render.basic.DrawMesh`) and their stable `Guid`.
+
+---
+
+<CardGroup cols={2}>
+  <Card title="Graph editor" icon="diagram-project" href="/concepts/graph-editor">
+    Navigate the canvas, add operators, and wire connections.
+  </Card>
+  <Card title="Operators" icon="cube" href="/concepts/operators">
+    Understand the slot system, types, and built-in operator categories.
+  </Card>
+  <Card title="Timeline and animation" icon="film" href="/concepts/timeline-animation">
+    Work with keyframes, curves, and time clips.
+  </Card>
+</CardGroup>

@@ -1,0 +1,192 @@
+---
+title: "Image operators"
+description: "2D texture generation, effects, colour correction, compositing, and image analysis operators."
+---
+
+Image operators work with `Texture2D` values — GPU textures that are created, transformed, and combined on the GPU each frame. The primary entry point for most compositions is `RenderTarget` (`lib.image.generate.basic.RenderTarget`), which accepts a `Command` tree from render operators and outputs a `Texture2D`.
+
+Image operators are organised into six subcategories: generate, fx, color, transform, analyze, and use.
+
+<Note>
+`Texture2D` outputs are always GPU-resident. Connecting them between operators does not copy texture data — it passes a reference that is resolved during evaluation.
+</Note>
+
+## Subcategories
+
+<AccordionGroup>
+  <Accordion title="generate — create textures from scratch">
+    Generate operators produce `Texture2D` outputs without requiring an input texture.
+
+    **basic**
+
+    | Operator | Description |
+    |----------|-------------|
+    | `RenderTarget` | Renders a `Command` tree into a `Texture2D`. Outputs `ColorBuffer`, `DepthBuffer`, and `NormalBuffer`. Parameters: `Resolution`, `TextureFormat`, `Multisampling`, `ClearColor`, `WithDepthBuffer`, `GenerateMips`. |
+    | `LinearGradient` | A smooth linear gradient between two colors with configurable angle and stops. |
+    | `RadialGradient` | A circular gradient radiating from a center point. |
+    | `BoxGradient` | A rectangular gradient with rounded corner support. |
+    | `NGonGradient` | A regular polygon-shaped gradient. |
+    | `NGon` | Draws a regular N-sided polygon shape. |
+    | `CheckerBoard` | A two-color checkerboard pattern with configurable cell size. |
+    | `RoundedRect` | A filled rounded rectangle with controllable corner radius. |
+    | `Blob` | An organic blob shape with noise-driven edges. |
+
+    **noise**
+
+    | Operator | Description |
+    |----------|-------------|
+    | `FractalNoise` | Multi-octave fractal (fBm) noise texture. Parameters: octaves, persistence, lacunarity, scale, offset. |
+    | `TileableNoise` | Seamlessly tileable noise texture. |
+    | `WorleyNoise` | Voronoi/Worley cellular noise. |
+    | `ShardNoise` | Angular, shard-like noise with sharp edges. |
+    | `Grain` | Film grain noise texture, useful for adding texture to flat images. |
+
+    **pattern**
+
+    | Operator | Description |
+    |----------|-------------|
+    | `Raster` | A regular dot or grid raster pattern. |
+    | `ValueRaster` | A raster where each cell's intensity is driven by a value input. |
+    | `Rings` | Concentric ring patterns. |
+    | `SinForm` | Sine-wave interference pattern. |
+    | `NumberPattern` | Renders numeric values as a texture for debugging. |
+    | `FraserGrid` | An optical illusion-style Fraser grid pattern. |
+    | `ZollnerPattern` | A Zöllner optical illusion pattern. |
+    | `RyojiPattern1` / `RyojiPattern2` | Abstract geometric patterns inspired by Ryoji Ikeda's work. |
+
+    **fractal**
+
+    | Operator | Description |
+    |----------|-------------|
+    | `MandelbrotFractal` | Real-time Mandelbrot set renderer with zoom, iteration count, and color mapping. |
+    | `MunchingSquares2` | A munch-squares cellular automaton pattern. |
+  </Accordion>
+
+  <Accordion title="fx — effects, blur, distortion, feedback, and stylization">
+    **blur**
+
+    | Operator | Description |
+    |----------|-------------|
+    | `Blur` | Gaussian blur with configurable radius and quality. |
+    | `FastBlur` | Lower-quality but faster blur for real-time use. |
+    | `DirectionalBlur` | Blur applied along a specific angle — useful for motion streaks. |
+    | `Bloom` | Additive glow / bloom effect. Parameters: threshold, radius, intensity. |
+    | `Sharpen` | Unsharp-mask sharpening filter. |
+
+    **distort**
+
+    | Operator | Description |
+    |----------|-------------|
+    | `Displace` | Displaces pixels using a second texture as a displacement map. |
+    | `ChromaticDistortion` | Chromatic aberration with per-channel radial displacement. |
+    | `PolarCoordinates` | Converts between polar and Cartesian UV coordinates. |
+    | `BubbleZoom` | A lens-distortion / bubble zoom warp. |
+    | `TimeDisplace` | Displaces pixels based on a history buffer — temporal smearing. |
+    | `DistortAndShade` | Combined distortion and shading in a single pass. |
+    | `EdgeRepeat` | Repeats edge pixels to fill out-of-bounds UVs. |
+    | `KochKaleidoskope` | Koch-curve based kaleidoscope mirror effect. |
+    | `FieldToImage` | Converts a field (SDF or vector field) to a `Texture2D` visualization. |
+
+    **feedback**
+
+    | Operator | Description |
+    |----------|-------------|
+    | `AdvancedFeedback` | Feeds the previous frame back into the current frame with transform and blend control. |
+    | `AdvancedFeedback2` | Extended version with additional modulation inputs. |
+    | `AfterGlow` | Temporal afterglow that fades bright pixels over multiple frames. |
+    | `AfterGlow2` | Per-channel afterglow with independent decay rates. |
+    | `FluidFeedback` | Fluid-simulation-like feedback using advection. |
+    | `SimpleLiquid` / `SimpleLiquid2` | Simplified liquid feedback simulations. |
+
+    **glitch**
+
+    | Operator | Description |
+    |----------|-------------|
+    | `GlitchDisplace` | Digital glitch effect with random horizontal scan-line displacement. |
+    | `SortPixelGlitch` | Pixel-sorting glitch that reorders pixels by luminance or hue. |
+    | `RgbTV` | CRT-style RGB channel separation and scanline simulation. |
+    | `SubdivisionStretch` | Block-subdivision stretch glitch. |
+
+    **stylize**
+
+    | Operator | Description |
+    |----------|-------------|
+    | `Glow` | Adds a glow halo around bright areas. |
+    | `Bloom` | *(also in blur)* Bloom glow accumulation. |
+    | `ChromaticAbberation` | Lateral chromatic aberration (separate from `ChromaticDistortion`). |
+    | `DetectEdges` | Sobel/Laplacian edge detection filter. |
+    | `Pixelate` | Reduces texture resolution in blocks for a mosaic effect. |
+    | `Dither` | Ordered or error-diffusion dithering. |
+    | `AsciiRender` | Converts texture luminance to ASCII characters. |
+    | `MosiacTiling` | Mosaic / tile repeat effect. |
+    | `HoneyCombTiles` | Hexagonal honeycomb tiling. |
+    | `VoronoiCells` | Voronoi cell stylization. |
+    | `LightRaysFx` | Screen-space radial light rays / god rays post-effect. |
+    | `StarGlowStreaks` | Anamorphic lens star-streak glow. |
+    | `FakeLight` | Adds fake directional lighting based on normals or gradients. |
+    | `ScreenCloseUp` | Magnification / screen close-up lens effect. |
+    | `Steps` | Posterizes the image into discrete luminance steps. |
+    | `ColorPhysarum` | Physarum (slime mould) simulation rendered as a stylized texture. |
+  </Accordion>
+
+  <Accordion title="color — colour correction and conversion">
+    | Operator | Description |
+    |----------|-------------|
+    | `AdjustColors` | Adjusts brightness, contrast, and gamma. |
+    | `HSE` | Hue, saturation, and exposure (HSE) adjustment. |
+    | `ColorGrade` | Full colour grading with lift/gamma/gain and LUT support. |
+    | `ColorGradeDepth` | Applies colour grading driven by scene depth. |
+    | `ToneMapping` | Applies a tone-mapping curve (ACES, Reinhard, etc.) to HDR content. |
+    | `Tint` | Multiplies the image by a solid colour tint. |
+    | `ChannelMixer` | Remaps R/G/B/A channels with a 4×4 matrix. |
+    | `RemapColor` | Maps input colour range to an output colour range. |
+    | `KeyColor` | Chroma-key / green-screen removal by colour range. |
+    | `ConvertColors` | Converts between colour spaces (linear ↔ sRGB, etc.). |
+    | `ConvertFormat` | Changes the texture format (e.g., RGBA8 to R16F). |
+  </Accordion>
+
+  <Accordion title="transform — spatial image transforms">
+    | Operator | Description |
+    |----------|-------------|
+    | `TransformImage` | Translates, rotates, and scales a texture in UV space. |
+    | `Crop` | Crops the image to a sub-rectangle. |
+    | `MirrorRepeat` | Tiles the image with mirrored repetition. |
+    | `MakeTileableImage` | Blends edges to make a texture seamlessly tileable. |
+    | `MakeTileableImageAdvanced` | Extended tileability with frequency-domain blending. |
+    | `ImageFFT` | Fast Fourier Transform of the image (frequency domain representation). |
+  </Accordion>
+
+  <Accordion title="analyze — image measurement and motion detection">
+    | Operator | Description |
+    |----------|-------------|
+    | `GetImageBrightness` | Reads back the average brightness of a texture as a `float`. |
+    | `ImageLevels` | Computes luminance histogram and level statistics. |
+    | `WaveForm` | Renders a waveform monitor visualization of the image's luminance distribution. |
+    | `CompareImages` | Computes the difference between two textures. |
+    | `DetectMotion` | Measures per-frame motion as a scalar value by comparing consecutive frames. |
+    | `OpticalFlow` | Computes a dense optical flow field between frames. |
+    | `RemoveStaticBackground` | Subtracts a reference background frame from the current frame. |
+  </Accordion>
+
+  <Accordion title="use — compositing and texture utilities">
+    | Operator | Description |
+    |----------|-------------|
+    | `Blend` | Alpha-blends two textures together. |
+    | `BlendImages` | Blends two textures with a configurable blend mode and factor. |
+    | `BlendWithMask` | Blends two textures using a third texture as a mask. |
+    | `Combine3Images` | Combines three textures in one node. |
+    | `NormalMap` | Generates a normal map from a height-map texture. |
+    | `Fxaa` | Fast approximate anti-aliasing post-process pass. |
+    | `RenderWithMotionBlur` | Renders a command subtree multiple times with accumulation for motion blur. |
+    | `KeepPreviousFrame` | Outputs the previous frame's texture, enabling single-frame feedback loops. |
+    | `KeepInTextureArray` | Accumulates frames into a texture array for history effects. |
+    | `SwapTextures` | Alternates between two textures on a trigger signal. |
+    | `PickTexture` | Selects one texture from a list by index. |
+    | `FirstValidTexture` | Returns the first non-null texture from a list of candidates. |
+    | `UseFallbackTexture` | Returns a fallback texture if the primary input is null. |
+    | `UseTextureReference` | Dereferences a texture by name from the asset registry. |
+    | `CustomPixelShader` | Runs a user-authored HLSL pixel shader on the input texture. |
+    | `CombineMaterialChannels` / `CombineMaterialChannels2` | Packs separate greyscale textures into RGBA channels for PBR material maps. |
+    | `DepthBufferAsGrayScale` | Visualizes the depth buffer as a greyscale texture. |
+  </Accordion>
+</AccordionGroup>

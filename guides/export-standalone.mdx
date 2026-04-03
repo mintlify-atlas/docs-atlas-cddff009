@@ -1,0 +1,94 @@
+---
+title: "Exporting a standalone"
+description: "Build a standalone executable from your TiXL project, and export video or image sequences using the Render window."
+---
+
+TiXL supports two distinct export workflows:
+
+1. **Standalone executable** — a self-contained `.exe` that plays your project without the editor
+2. **Render to file** — export a video file or image sequence from the Render window
+
+## Standalone executable
+
+A standalone build copies the **Player** runtime together with your compiled project into a folder. The result is a small portable directory with an executable that runs your composition on any Windows machine with a DirectX 11 GPU, without requiring TiXL to be installed.
+
+### How to build a standalone
+
+Standalone builds are produced using the `build-stand-alone.bat` script at the root of the repository. This requires a **Release** build of the solution.
+
+<Steps>
+  <Step title="Build the solution in Release mode">
+    Open `t3.sln` in Visual Studio 2022. Switch the build configuration to **Release** and build the full solution (`Ctrl+Shift+B`). Both `Editor` and `Player` projects must complete successfully.
+  </Step>
+  <Step title="Run build-stand-alone.bat">
+    Run `build-stand-alone.bat` from the repository root. The script:
+    - Creates a `TiXL-Standalone/` folder one level above the repo
+    - Copies `Resources/`, `.Variations/`, the Player binaries, and the Editor binaries into it
+
+    ```bat
+    build-stand-alone.bat
+    ```
+  </Step>
+  <Step title="Run the standalone">
+    Navigate to the `TiXL-Standalone/` folder and launch the Player executable. It boots directly into your project without the authoring UI.
+  </Step>
+</Steps>
+
+<Note>
+  The `build-stand-alone.bat` script is the official way to produce a standalone build. For more detail, see the [StandAloneBuilds wiki page](https://github.com/tixl3d/tixl/wiki).
+</Note>
+
+### Command-line options
+
+The standalone Player executable accepts these command-line arguments:
+
+| Flag | Default | Description |
+|---|---|---|
+| `--width` | `1920` | Output width in pixels |
+| `--height` | `1080` | Output height in pixels |
+| `--windowed` | `false` | Run in a window instead of fullscreen |
+| `--loop` | `false` | Loop the composition continuously |
+| `--no-vsync` | `false` | Disable vertical sync |
+| `--logging` | `true` | Show log output in the console |
+
+```bash
+TixlPlayer.exe --width 3840 --height 2160 --windowed --loop
+```
+
+### Differences between editor and standalone
+
+| Feature | Editor | Standalone |
+|---|---|---|
+| Authoring UI | Yes | No |
+| Parameter editing | Yes | No |
+| Hot shader reload | Yes | No |
+| Input devices (MIDI, OSC) | Yes | Yes |
+| Spout / NDI output | Yes | Yes |
+| Performance overhead | Higher (ImGui UI) | Lower |
+
+---
+
+## Render to file (video / image sequence)
+
+The **Render** window exports your composition as a video file or image sequence. This is separate from standalone builds — it renders frames offline at your chosen frame rate and resolution.
+
+<Steps>
+  <Step title="Open the Render window">
+    Go to **Windows → Render To File** in the editor menu.
+  </Step>
+  <Step title="Configure settings">
+    - **Render mode** — Video (MP4/H.264) or Image sequence
+    - **Time range** — Custom (in bars, seconds, or frames), current loop range, or full soundtrack
+    - **Frame rate** — Default 60 fps
+    - **Resolution factor** — Scale relative to the output window (1.0 = full resolution)
+    - **Bitrate** — For video export (default 25 Mbps)
+    - **Export audio** — Include the project's audio track in the video
+  </Step>
+  <Step title="Start the render">
+    Click **Start Render**. TiXL renders each frame through the full DirectX 11 pipeline and writes the output to disk.
+  </Step>
+</Steps>
+
+<Tip>
+  Use **Image sequence** output when you need maximum quality for compositing in another application, or when the video codec introduces visible compression artifacts.
+</Tip>

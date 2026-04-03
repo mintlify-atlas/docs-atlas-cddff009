@@ -1,97 +1,67 @@
 ---
-title: "Introduction"
-description: "Welcome to the new home for your documentation"
+title: "TiXL — Realtime Motion Graphics"
+description: "Open source software for creating realtime motion graphics, procedural visuals, and audio-reactive content."
 ---
 
-## Setting up
+TiXL is an open source, node-based motion graphics tool built for artists, VJs, and technical creatives. Combine real-time GPU rendering, keyframe animation, and a rich operator library to create stunning visuals — live or exported.
 
-Get your documentation site up and running in minutes.
-
-<Card
-  title="Start here"
-  icon="rocket"
-  href="/quickstart"
-  horizontal
->
-  Follow our three step quickstart guide.
-</Card>
-
-## Make it yours
-
-Design a docs site that looks great and empowers your users.
-
-<Columns cols={2}>
-  <Card
-    title="Edit locally"
-    icon="pen-to-square"
-    href="/development"
-  >
-    Edit your docs locally and preview them in real time.
+<CardGroup cols={2}>
+  <Card title="Installation" icon="download" href="/installation">
+    Download and install TiXL on Windows. Get up and running in minutes.
   </Card>
-  <Card
-    title="Customize your site"
-    icon="palette"
-    href="/essentials/settings"
-  >
-    Customize the design and colors of your site to match your brand.
+  <Card title="Quickstart" icon="rocket" href="/quickstart">
+    Build your first motion graphics scene from scratch.
   </Card>
-    <Card
-    title="Set up navigation"
-    icon="map"
-    href="/essentials/navigation"
-  >
-    Organize your docs to help users find what they need and succeed with your product.
+  <Card title="Core Concepts" icon="lightbulb" href="/concepts/how-tixl-works">
+    Understand the graph model, operators, and the evaluation pipeline.
   </Card>
-  <Card
-    title="API documentation"
-    icon="terminal"
-    href="/api-reference/introduction"
-  >
-    Auto-generate API documentation from OpenAPI specifications.
+  <Card title="Operator Reference" icon="grid" href="/operators/overview">
+    Browse all built-in operators for rendering, image FX, mesh, particles, and I/O.
   </Card>
-</Columns>
+</CardGroup>
 
-## Create beautiful pages
+## What you can build
 
-Everything you need to create world-class documentation.
+TiXL sits at the intersection of real-time rendering, procedural generation, and timeline animation:
 
-<Columns cols={2}>
-  <Card
-    title="Write with MDX"
-    icon="pen-fancy"
-    href="/essentials/markdown"
-  >
-    Use MDX to style your docs pages.
+<CardGroup cols={3}>
+  <Card title="Audio-reactive visuals" icon="waveform">
+    Drive any parameter from audio amplitude, beat detection, or FFT bands.
   </Card>
-  <Card
-    title="Code samples"
-    icon="code"
-    href="/essentials/code"
-  >
-    Add sample code to demonstrate how to use your product.
+  <Card title="VJ performance" icon="display">
+    Output live via Spout or NDI to mixers and LED walls.
   </Card>
-  <Card
-    title="Images"
-    icon="image"
-    href="/essentials/images"
-  >
-    Display images and other media.
+  <Card title="Motion graphics" icon="film">
+    Animate with keyframes, curves, and the dope sheet editor.
   </Card>
-  <Card
-    title="Reusable snippets"
-    icon="recycle"
-    href="/essentials/reusable-snippets"
-  >
-    Write once and reuse across your docs.
+  <Card title="HLSL shaders" icon="code">
+    Write fragment and compute shaders directly inside the editor.
   </Card>
-</Columns>
+  <Card title="Standalone export" icon="box-archive">
+    Ship small, self-contained executables — no editor required.
+  </Card>
+  <Card title="Hardware integration" icon="usb">
+    Connect MIDI controllers, OSC, DMX, serial devices, and sensors.
+  </Card>
+</CardGroup>
 
-## Need inspiration?
+## Get started
 
-<Card
-  title="See complete examples"
-  icon="stars"
-  href="https://mintlify.com/customers"
->
-  Browse our showcase of exceptional documentation sites.
-</Card>
+<Steps>
+  <Step title="Download TiXL">
+    Grab the latest installer from the [GitHub releases page](https://github.com/tixl3d/tixl/releases) and run it.
+  </Step>
+  <Step title="Open the editor">
+    Launch TiXL. The editor opens with an empty project. You'll see the graph canvas, output window, and parameter panel.
+  </Step>
+  <Step title="Add your first operator">
+    Right-click the graph canvas and search for an operator — try `DrawMesh` or `Gradient`. Connect it to the output.
+  </Step>
+  <Step title="Animate a parameter">
+    Right-click any parameter in the **Parameter** panel and choose **Add keyframe**. Scrub the timeline to animate it.
+  </Step>
+</Steps>
+
+<Tip>
+  Join the [TiXL Discord community](https://discord.gg/YmSyQdeH3S) to share your work, ask questions, and follow development.
+</Tip>

@@ -1,0 +1,265 @@
+---
+title: "Operator conventions"
+description: "File layout, class structure, slot declarations, naming rules, and performance constraints that every TiXL operator must follow."
+---
+
+All operators in `Operators/Lib/` and other packages follow a strict set of conventions. Consistency across operators is what allows the editor to auto-discover inputs, serialize state, provide UI parameter controls, and hot-reload code.
+
+<Warning>
+Deviating from these conventions will break symbol loading, serialization, or the editor UI. When in doubt, compare against an existing operator in the same category.
+</Warning>
+
+## File layout
+
+Every operator lives in a directory that matches its namespace. Each operator consists of at least a `.cs` file and typically a `.t3` metadata file and a `.t3ui` UI hints file.
+
+```
+Operators/Lib/mesh/generate/
+├── QuadMesh.cs       ← C# operator class
+├── QuadMesh.t3       ← Symbol metadata (connections, child graph)
+├── QuadMesh.t3ui     ← UI hints (parameter labels, widget types)
+```
+
+Shader operators also ship an `.hlsl` file alongside the C# class:
+
+```
+Operators/Lib/render/basic/
+├── DrawScreenQuad.cs
+├── DrawScreenQuad.t3
+├── DrawScreenQuad.t3ui
+```
+
+## Class structure
+
+Every operator class must:
+
+1. Be decorated with `[Guid("...")]` matching the `.t3` metadata file.
+2. Be `internal sealed`.
+3. Inherit from `Instance<T>` where `T` is the class itself.
+4. Wire outputs to their update action in the constructor.
+5. Implement the actual computation in a `private void Update(EvaluationContext context)` method.
+6. Place private fields and private enums at the **end** of the class.
+
+```csharp
+namespace Lib.mesh.generate;
+
+[Guid("9d6dbf28-9983-4584-abba-6281ce51d583")]
+internal sealed class QuadMesh : Instance<QuadMesh>
+{
+    // ── Outputs (at the top) ──────────────────────────────
+    [Output(Guid = "9c86f704-a28f-4d2a-b7c0-15648f982462")]
+    public readonly Slot<MeshBuffers> Data = new();
+
+    // ── Constructor: wire update actions ─────────────────
+    public QuadMesh()
+    {
+        Data.UpdateAction += Update;
+    }
+
+    // ── Inputs (after constructor) ────────────────────────
+    [Input(Guid = "18a5f3be-92a7-438c-b32b-e0da7c7a5736")]
+    public readonly InputSlot<Int2> Segments = new();
+
+    [Input(Guid = "44fc1e7b-b1d1-4199-b373-8b7c4cc060d2")]
+    public readonly InputSlot<float> Scale = new();
+
+    [Input(Guid = "0295DD65-95B4-4E02-8D61-4622F59D4FC4")]
+    public readonly InputSlot<Vector2> Stretch = new();
+
+    // ── Private implementation ────────────────────────────
+    private void Update(EvaluationContext context)
+    {
+        var scale   = Scale.GetValue(context);
+        var stretch = Stretch.GetValue(context);
+        // ...compute, fill _vertexBufferData, _indexBufferData...
+
+        Data.Value = _data;
+        Data.DirtyFlag.Clear();   // required: marks output as fresh
+    }
+
+    // ── Private fields at the end ─────────────────────────
+    private Buffer _vertexBuffer;
+    private PbrVertex[] _vertexBufferData = new PbrVertex[0];
+    private readonly BufferWithViews _vertexBufferWithViews = new();
+    private readonly MeshBuffers _data = new();
+}
+```
+
+## Slot declarations
+
+### Output slots
+
+Output slots use `Slot<T>` and must be annotated with `[Output(Guid = "...")]`. The `Guid` must be stable and unique — it is stored in the `.t3` file and used to identify the connection endpoints.
+
+```csharp
+[Output(Guid = "3c8116a2-2686-41ba-8bfd-d1b3fb929b02")]
+public readonly Slot<Command> Output = new();
+```
+
+### Input slots
+
+Input slots use `InputSlot<T>` and must be annotated with `[Input(Guid = "...")]`.
+
+```csharp
+[Input(Guid = "92c66734-dce9-402a-95f6-cde0e58bf32f")]
+public readonly InputSlot<Texture2D> Texture = new();
+
+[Input(Guid = "4e8fecd0-00ca-404e-a9d4-1cb0d3e044f1")]
+public readonly InputSlot<Vector4> Color = new();
+```
+
+When an `int` slot maps to an enum, use the `MappedType` parameter so the editor renders a dropdown:
+
+```csharp
+[Input(Guid = "60cef5fb-b22a-4fa0-83bb-093d0f1d5b56", MappedType = typeof(SharedEnums.BlendModes))]
+public readonly InputSlot<int> BlendMode = new();
+```
+
+### Multi-input slots
+
+`MultiInputSlot<T>` accepts multiple incoming connections (for example, a list of layers to merge):
+
+```csharp
+[Input(Guid = "...")]
+public readonly MultiInputSlot<Command> Layers = new();
+```
+
+## Naming conventions
+
+- **Namespace**: mirrors the directory path under `Operators/`. A file at `Operators/Lib/mesh/generate/QuadMesh.cs` uses `namespace Lib.mesh.generate;`.
+- **Class name**: PascalCase, matches the filename. E.g. `QuadMesh`, `DrawScreenQuad`.
+- **Slot names**: match the conceptual parameter name visible in the UI. Use descriptive names (`faceIndex`, not `i`). Follow the naming used in similar operators in the same category.
+- **Private fields**: prefix with `_` (`_vertexBuffer`, `_data`).
+- **Private enums**: placed at the end of the class body, after private fields.
+
+## Evaluation path constraints
+
+The `Update()` method runs once per frame for every dirty operator in the graph. It must be:
+
+- **Allocation-free**: no `new` expressions for heap objects. Reuse pre-allocated arrays, structs, and GPU buffer wrappers. Resize arrays only when dimensions change.
+- **LINQ-free**: no `.Select()`, `.Where()`, `.ToList()`, or similar. Use explicit `for` / `foreach` loops.
+- **Side-effect-minimal**: avoid hidden global state mutations unless the operator explicitly documents the side effect.
+
+```csharp
+// Correct: resize pre-allocated array only when needed
+if (_vertexBufferData.Length != verticesCount)
+    _vertexBufferData = new PbrVertex[verticesCount];
+
+// Correct: explicit loop
+for (int i = 0; i < count; i++)
+{
+    _vertexBufferData[i] = ComputeVertex(i);
+}
+```
+
+See [Performance guidelines](/dev/performance-guidelines) for the full set of rules and before/after examples.
+
+## Reading input slot values
+
+Use `GetValue(context)` to read the current value of an input slot. This triggers dirty-flag propagation up the graph as needed:
+
+```csharp
+private void Update(EvaluationContext context)
+{
+    var scale   = Scale.GetValue(context);
+    var stretch = Stretch.GetValue(context);
+    var pivot   = Pivot.GetValue(context);
+    // ...
+}
+```
+
+Do not cache the result of `GetValue()` across frames in a field unless you specifically want to preserve a previous value.
+
+## Completing an update
+
+After writing the computed value to the output slot, always clear the dirty flag:
+
+```csharp
+Data.Value = _data;
+Data.DirtyFlag.Clear();
+```
+
+Failing to call `Clear()` causes the output to be considered dirty on every frame, triggering unnecessary downstream re-evaluations.
+
+## Shader operator conventions
+
+Operators that compile and dispatch HLSL shaders typically implement `IShaderOperator` and hold a `Resource<PixelShader>` or `Resource<ComputeShader>` created via `ResourceManager.CreateShaderResource(...)`. The shader file path is given relative to the operator's package resource root.
+
+See [Writing operators](/dev/writing-operators) for a complete example of creating a shader operator.
+
+## Example: a minimal mesh generator
+
+The following is the complete structure of `QuadMesh` — one of the simplest mesh generators in `Operators/Lib/mesh/generate/`:
+
+```csharp
+namespace Lib.mesh.generate;
+
+[Guid("9d6dbf28-9983-4584-abba-6281ce51d583")]
+internal sealed class QuadMesh : Instance<QuadMesh>
+{
+    [Output(Guid = "9c86f704-a28f-4d2a-b7c0-15648f982462")]
+    public readonly Slot<MeshBuffers> Data = new();
+
+    public QuadMesh()
+    {
+        Data.UpdateAction += Update;
+    }
+
+    private void Update(EvaluationContext context)
+    {
+        var scale   = Scale.GetValue(context);
+        var stretch = Stretch.GetValue(context);
+        var segments = Segments.GetValue(context);
+
+        var columns = segments.Width.Clamp(1, 10000) + 1;
+        var rows    = segments.Height.Clamp(1, 10000) + 1;
+        var faceCount    = (columns - 1) * (rows - 1) * 2;
+        var verticesCount = columns * rows;
+
+        if (_vertexBufferData.Length != verticesCount)
+            _vertexBufferData = new PbrVertex[verticesCount];
+
+        if (_indexBufferData.Length != faceCount)
+            _indexBufferData = new Int3[faceCount];
+
+        // ... fill vertex and index arrays ...
+
+        ResourceManager.SetupStructuredBuffer(
+            _vertexBufferData, PbrVertex.Stride * verticesCount,
+            PbrVertex.Stride, ref _vertexBuffer);
+        ResourceManager.CreateStructuredBufferSrv(_vertexBuffer, ref _vertexBufferWithViews.Srv);
+        _vertexBufferWithViews.Buffer = _vertexBuffer;
+
+        _data.VertexBuffer  = _vertexBufferWithViews;
+        _data.IndicesBuffer = _indexBufferWithViews;
+        Data.Value = _data;
+        Data.DirtyFlag.Clear();
+    }
+
+    [Input(Guid = "18a5f3be-92a7-438c-b32b-e0da7c7a5736")]
+    public readonly InputSlot<Int2> Segments = new();
+
+    [Input(Guid = "44fc1e7b-b1d1-4199-b373-8b7c4cc060d2")]
+    public readonly InputSlot<float> Scale = new();
+
+    [Input(Guid = "0295DD65-95B4-4E02-8D61-4622F59D4FC4")]
+    public readonly InputSlot<Vector2> Stretch = new();
+
+    [Input(Guid = "7F01D9B9-C612-4A2D-A52F-B56C54FB62AF")]
+    public readonly InputSlot<Vector2> Pivot = new();
+
+    [Input(Guid = "B2A1C96A-4AEF-412A-B006-2EF285DD2479")]
+    public readonly InputSlot<Vector3> Center = new();
+
+    [Input(Guid = "A89E41BF-5395-41F0-9804-A782ED4C0F30")]
+    public readonly InputSlot<Vector3> Rotation = new();
+
+    private Buffer _vertexBuffer;
+    private PbrVertex[] _vertexBufferData = new PbrVertex[0];
+    private readonly BufferWithViews _vertexBufferWithViews = new();
+    private Buffer _indexBuffer;
+    private Int3[] _indexBufferData = new Int3[0];
+    private readonly BufferWithViews _indexBufferWithViews = new();
+    private readonly MeshBuffers _data = new();
+}
+```

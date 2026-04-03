@@ -1,0 +1,90 @@
+---
+title: "Particle operators"
+description: "GPU-accelerated particle system with spawn control, forces, and a rich library of force operators."
+---
+
+TiXL's particle system runs entirely on the GPU via compute shaders. Particles are born at emit points, live for a configurable lifetime, accumulate forces each frame, and die — all without any CPU round-trips. The system can sustain millions of live particles at real-time frame rates.
+
+<Note>
+Particle data is stored in a `BufferWithViews` structured buffer and is compatible with the **Point** draw operators (`DrawPoints`, `DrawBillboards`, `DrawRibbons`, etc.) as well as the point modify operators for post-simulation attribute editing.
+</Note>
+
+## Core operator
+
+### ParticleSystem
+
+`lib.particle.ParticleSystem` is the central node of every particle effect. It manages the particle pool, emitter logic, and the force evaluation loop.
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `EmitPoints` | `BufferWithViews` | Point list that defines where new particles are born. |
+| `Emit` | `bool` | Enables/disables particle emission each frame. |
+| `Reset` | `bool` | Clears all live particles when toggled. |
+| `Update` | `bool` | Enables/disables the simulation step each frame. |
+| `MaxParticleCount` | `int` | Maximum number of simultaneously live particles (determines GPU buffer size). |
+| `EmitVelocity` | `float` | Initial speed of emitted particles. |
+| `EmitVelocityFactor` | `enum` | How emit velocity direction is determined (e.g., from normal, random). |
+| `RadiusFactor` | `float` | Scales the initial position spread around each emit point. |
+| `EmitMode` | `enum` | Emission strategy: Continuous, Burst, or on Trigger. |
+| `LifeTime` | `float` | How long each particle lives (in seconds). |
+| `Speed` | `float` | Multiplier applied to accumulated velocity. |
+| `Drag` | `float` | Per-frame velocity damping (0 = no drag, 1 = full stop). |
+| `OrientTowardsVelocity` | `float` | Blend factor for aligning particle rotation to velocity direction. |
+| `SetF1To` / `SetF2To` | `enum` | What to write into the F1/F2 attribute slots (e.g., ParticleAge, KeepOriginal). |
+| `ParticleForces` | `ParticleSystem[]` | Multi-input: connect force operators here to add forces to the simulation. |
+
+**Output:** `OutBuffer` — a `BufferWithViews` of live particles, compatible with any Point draw operator.
+
+## Setting up a basic particle effect
+
+```
+[EmitPoints source]  →  [ParticleSystem]  →  [DrawPoints / DrawBillboards / DrawRibbons]
+                               ↑
+                    [Force operators connected
+                     to ParticleForces input]
+```
+
+1. Create an emit-point source — for example a `GridPoints` or `SpherePoints` operator.
+2. Connect it to `ParticleSystem.EmitPoints`.
+3. Add one or more force operators to `ParticleSystem.ParticleForces`.
+4. Connect `ParticleSystem.OutBuffer` to the input of a draw operator such as `DrawPoints`.
+5. Wrap the draw operator in a `RenderTarget` to produce a `Texture2D`.
+
+## Force operators
+
+Force operators plug into the `ParticleForces` multi-input of `ParticleSystem`. They are evaluated every simulation step to accumulate velocity and modify particle attributes.
+
+<AccordionGroup>
+  <Accordion title="Built-in forces">
+    | Operator | Description |
+    |----------|-------------|
+    | `DirectionalForce` | Applies a constant force in a world-space direction. Use for gravity (`0, -9.8, 0`) or wind. |
+    | `TurbulenceForce` | Adds smooth Curl-noise turbulence to particle velocities for organic motion. |
+    | `VelocityForce` | Scales the current particle velocity — useful for acceleration/deceleration. |
+    | `VolumeForce` | Applies force based on particle position within a defined volume shape. |
+    | `MeshVolumeForce` | Confines or repels particles based on their relationship to a `MeshBuffers` volume. |
+    | `FollowMeshSurfaceForce` | Attracts particles to the nearest surface point of a mesh. |
+    | `FieldVolumeForce` | Samples a field (SDF or vector field) to compute per-particle forces. |
+    | `FieldDistanceForce` | Applies force proportional to the distance from a field's isosurface. |
+    | `VectorFieldForce` | Steers particles along a 3D vector field texture. |
+    | `TextureMapForce` | Samples a `Texture2D` to derive force magnitude and direction per particle. |
+    | `CollisionForce` | Detects and responds to collisions with a plane or mesh surface. |
+    | `ReconstructiveForce` | Pulls particles back towards their original spawn positions over time. |
+    | `AxisStepForce` | Applies discrete step-wise forces along a chosen axis. |
+    | `RandomJumpForce` | Randomly teleports particles by a small offset on a trigger condition. |
+    | `SnapToAnglesForce` | Snaps particle rotation to the nearest discrete angle step. |
+    | `VerletRibbonForce` | Applies Verlet spring constraints to form ribbon-like chains between particles. |
+    | `SwitchParticleForce` | Switches between two force inputs based on a boolean condition. |
+    | `CustomForce` | Executes a user-authored HLSL compute shader as a force operator. |
+  </Accordion>
+</AccordionGroup>
+
+## Performance considerations
+
+<Note>
+**GPU particles run entirely on compute shaders.** No particle data is read back to the CPU during normal operation. This means:
+- `MaxParticleCount` pre-allocates the full buffer regardless of how many particles are currently alive. Set it conservatively.
+- Adding more force operators adds compute dispatch calls per frame but does not stall the CPU pipeline.
+- Drawing particles with `DrawRibbons` or `DrawTubes` is more expensive than `DrawPoints` because it expands each particle into geometry in a geometry shader pass.
+- Use `TemporalAccumulation` (render/postfx) to smooth out sparse particle renders instead of increasing particle count.
+</Note>

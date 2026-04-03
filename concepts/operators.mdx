@@ -1,0 +1,132 @@
+---
+title: "Operators"
+description: "What operators are, how the typed slot system works, the dirty/update mechanism, and the built-in operator categories available in TiXL."
+---
+
+An operator is the fundamental building block in TiXL. Every node you place in the graph is an operator: a typed function that reads values from its input slots, performs work (math, rendering, I/O, logic), and writes results to its output slots — once per evaluation pass each frame.
+
+## Symbol and instance recap
+
+Every operator you use in the graph is a **Symbol** instantiated as an **Instance**:
+
+- **`Symbol`** — the operator class definition. It declares which inputs and outputs exist, their types and default values, and stores the keyframe animator for that operator type.
+- **`Instance`** — a live placement of that symbol in a composition. It holds the concrete `InputSlot<T>` and `OutputSlot<T>` objects that carry actual values during evaluation.
+
+See [How TiXL works](/concepts/how-tixl-works) for a full description of the Symbol/Instance model.
+
+## The slot system
+
+Every connection between operators is mediated by typed slots, implemented in `Core/Operator/Slots/`.
+
+### InputSlot\<T\>
+
+```csharp
+public class InputSlot<T> : Slot<T>, IInputSlot
+```
+
+An `InputSlot<T>` stores the current value of one input. When no connection is present, it returns the operator's own parameter value (`TypedInputValue`). When connected, evaluation pulls the value from the upstream `OutputSlot<T>` via the slot's `UpdateAction`.
+
+### OutputSlot\<T\>
+
+An `OutputSlot<T>` stores the computed result of the operator. Downstream inputs read from it; TiXL ensures the value is current before returning it by checking the `DirtyFlag`.
+
+### MultiInputSlot\<T\>
+
+`MultiInputSlot<T>` accepts any number of upstream connections of the same type — used by operators that aggregate many inputs (e.g., a `Group` that combines multiple render layers).
+
+### Slot files
+
+| File | Purpose |
+|---|---|
+| `InputSlot.cs` | Typed input slot, parameter value storage |
+| `OutputSlot.cs` (via `Slot.cs`) | Typed output slot |
+| `MultiInputSlot.cs` | Variable-arity input |
+| `IInputSlot.cs` / `IOutputSlot.cs` | Non-generic interfaces for reflection/tooling |
+| `ISlot.cs` | Base interface for all slot kinds |
+| `DirtyFlag.cs` | Version-chasing update tracker |
+| `DirtyFlagTrigger.cs` | Trigger modes: `None`, `Always`, `Animated` |
+| `TimeClipSlot.cs` | Specialized slot for timeline clip operators |
+| `TransformCallbackSlot.cs` | Slot for pass-through transform callbacks |
+
+## Dirty / update mechanism
+
+TiXL uses a **version-chasing** approach to avoid redundant computation:
+
+- Each slot has a `DirtyFlag` with two counters: `SourceVersion` (latest available data) and `ValueVersion` (last computed version).
+- A slot is **dirty** when `SourceVersion > ValueVersion`.
+- When an upstream value changes, `DirtyFlag.Invalidate()` increments `SourceVersion` and propagates downstream.
+- At evaluation time, a dirty slot runs its `UpdateAction`, computes a new value, and calls `DirtyFlag.Clear()` to synchronise the counters.
+- `DirtyFlagTrigger.Animated` forces a slot dirty every frame — used for operators driven by real-time data (audio, OSC, webcam).
+
+```
+SourceVersion=5, ValueVersion=3  →  dirty, will recompute
+SourceVersion=5, ValueVersion=5  →  clean, cached value reused
+```
+
+## Input types
+
+TiXL operators use strongly typed slots. Common types drawn from `Core/DataTypes/` and the C# BCL:
+
+| Type | Description |
+|---|---|
+| `float` | Scalar value |
+| `int` | Integer value |
+| `bool` | Boolean flag |
+| `Vector2` / `Vector3` / `Vector4` | 2D, 3D, 4D vectors |
+| `string` | Text value |
+| `Texture2D` | DirectX 11 texture resource |
+| `Buffer` | DirectX 11 structured or raw buffer |
+| `MeshBuffers` | Vertex/index buffer pair for mesh data |
+| `StructuredList` | Typed array passed between point/particle operators |
+| `Command` | Render command layer (composited draw calls) |
+| `Gradient` | Color gradient definition |
+| `Curve` | Animation curve (usable as a per-frame remapper) |
+
+Slot pin colors in the graph correspond to these types, so compatible connections are visually obvious at a glance.
+
+## Operator categories
+
+Built-in operators in `Operators/Lib/` are organized by namespace prefix:
+
+| Namespace prefix | Category | Examples |
+|---|---|---|
+| `lib.render` | Rendering | `DrawMesh`, `RenderTarget`, `SetMaterial` |
+| `lib.image` | Image processing | `Blur`, `Chromatic`, `ColorGrade` |
+| `lib.mesh` | Mesh generation and manipulation | `Sphere`, `Box`, `TransformMesh` |
+| `lib.point` | Point cloud operations | `PointsOnMesh`, `SimulateParticles` |
+| `lib.particle` | Particle systems | particle emitters, forces |
+| `lib.io` | External I/O | `AudioInput`, `OscInput`, `LoadImage` |
+| `lib.numbers` | Math and number utilities | `Add`, `Remap`, `Oscillate` |
+| `lib.string` | String utilities | `BuildString`, `ParseFloat` |
+| `lib.flow` | Graph flow control | `SetCommandTime`, `Group`, `Switch` |
+
+Specialized packages add further namespaces:
+
+- `mediapipe.*` — pose and hand tracking
+- `spout.*` — Spout2 texture sharing
+- `ndi.*` — NDI video I/O
+
+## Operator namespaces and naming
+
+Every operator has a fully qualified name built from its C# namespace and class name. For example:
+
+```
+lib.render.basic.DrawMesh
+lib.image.blur.GaussianBlur
+lib.mesh.generate.Sphere
+```
+
+The namespace path mirrors the directory structure under `Operators/Lib/`. When searching in the **Add operator** popup, you can type any fragment of the namespace or class name.
+
+## Finding operators
+
+Use the **Symbol Library** panel (accessible from the main menu or via the **Add operator** popup) to browse all loaded operators by category. Hovering an entry shows a tooltip with the operator's description and input/output signature.
+
+<Accordion title="What is the difference between disabled and bypassed?">
+  - **Disabled** — the operator's `UpdateAction` is skipped entirely. Its output slot returns a default/zero value. Use this to temporarily exclude an operator from the graph.
+  - **Bypassed** — the operator passes its primary input straight through to its output without processing. The graph stays connected but the operator's effect is neutralized. Toggle with **D** (disabled) from the graph editor.
+</Accordion>
+
+<Accordion title="How do I create a custom operator?">
+  Custom operators are C# classes that extend `Instance` and declare `InputSlot<T>` and `OutputSlot<T>` fields. They live in an editable symbol project (`EditableSymbolProject`) that TiXL hot-reloads when you save the source file. See `Editor/UiModel/EditableSymbolProject.Recompilation.cs` for the recompilation pipeline.
+</Accordion>

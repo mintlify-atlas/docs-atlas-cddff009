@@ -1,0 +1,87 @@
+---
+title: "Installation"
+description: "Download and install TiXL on Windows, or build from source using Visual Studio and the .NET 9 SDK."
+---
+
+## System requirements
+
+- **Operating system:** Windows 10 or Windows 11 (64-bit)
+- **GPU:** DirectX 11 capable graphics card (Feature Level 11.0 or higher)
+- **RAM:** 8 GB minimum, 16 GB recommended for complex projects
+- **Storage:** ~500 MB for the application; additional space for project files and shader caches
+
+<Note>
+TiXL uses DirectX 11 exclusively and runs on Windows only. Linux and macOS are not supported.
+</Note>
+
+## Download from GitHub releases
+
+1. Go to the [TiXL releases page](https://github.com/tixl3d/tixl/releases) on GitHub.
+2. Find the latest release at the top of the list.
+3. Under **Assets**, download the `.exe` installer (for example, `Tixl-v4.0.6.3.exe`).
+
+## Run the installer
+
+The installer is built with Inno Setup and follows a standard Windows setup flow.
+
+1. Double-click the downloaded `.exe` to launch the installer.
+2. Accept the license agreement (MIT).
+3. Choose an installation directory, or accept the default.
+4. Click **Install** and wait for the files to be copied.
+5. Click **Finish**. A desktop shortcut and Start Menu entry are created automatically.
+
+<Warning>
+If Windows SmartScreen blocks the installer, click **More info** then **Run anyway**. The binary is not code-signed; this warning is expected for open source builds.
+</Warning>
+
+## First launch
+
+When you open TiXL for the first time, you will see:
+
+- A **splash screen** while operators and resources load. Startup typically takes a few seconds.
+- The main editor window with the **Graph canvas**, **Output window**, **Parameter panel**, and **Timeline** arranged in the default layout.
+- A default project loaded and ready to use. No additional configuration is required.
+
+User settings and project files are stored in your Windows user profile. Log files are written to the settings directory and can be opened from any crash dialog.
+
+## Build from source
+
+Building from source gives you the latest changes and the ability to modify the engine and operators.
+
+### Prerequisites
+
+- **Visual Studio 2022** with the **Desktop development with C++** and **.NET desktop development** workloads installed
+- **.NET 9.0 SDK** — the repository's `global.json` pins to `9.0.0` with `latestMinor` roll-forward and prereleases disabled
+
+<Info>
+You can download the .NET 9 SDK from [dot.net](https://dot.net). The exact version requirement is defined in `global.json` at the root of the repository.
+</Info>
+
+### Clone and build
+
+```bash
+git clone https://github.com/tixl3d/tixl.git
+cd tixl
+```
+
+Open `t3.sln` in Visual Studio 2022:
+
+```text
+File → Open → Project/Solution → t3.sln
+```
+
+Set the **Editor** project as the startup project, select the **Release** or **Debug** configuration, and press **F5** (or **Ctrl+F5** to run without the debugger).
+
+The first build downloads NuGet packages and compiles all projects in the solution. Subsequent builds are incremental and much faster.
+
+### Solution structure
+
+| Project | Purpose |
+|---|---|
+| `Core/` | Shared runtime engine — operator model, animation, audio, resources |
+| `Editor/` | Authoring UI, graph editing, interaction, project management |
+| `Player/` | Standalone playback host for exported projects |
+| `Operators/Lib/` | Built-in operator library |
+| `Operators/Examples/` | Reference compositions |
+
+The editor entry point is `Editor/Program.cs`. The standalone player entry point is `Player/Program.cs`.

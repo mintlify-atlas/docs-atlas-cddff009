@@ -1,0 +1,65 @@
+---
+title: "Presets and variations"
+description: "Save, browse, and switch between parameter states using TiXL's presets and snapshots system."
+---
+
+TiXL's **Variations** window lets you save and recall named parameter states — useful for live performance, design exploration, and switching between looks without manual parameter editing.
+
+## Two variation types
+
+| Type | Scope | Best for |
+|---|---|---|
+| **Preset** | Parameters of a single selected operator | Saving looks for one operator |
+| **Snapshot** | All animated parameters in the current composition | Full scene state captures |
+
+## Opening the Variations window
+
+Go to **Windows → Presets** (or **Variations**) to open the panel. The window shows a thumbnail grid — each thumbnail previews the visual output for that saved state.
+
+## Creating a preset
+
+<Steps>
+  <Step title="Select an operator">
+    Click an operator node in the graph to select it. The Variations window switches to **Presets** mode automatically.
+  </Step>
+  <Step title="Adjust parameters">
+    Set the parameters you want to save in the **Parameter** panel.
+  </Step>
+  <Step title="Save the preset">
+    Click the **+** button in the Variations window. TiXL captures the current parameter values and generates a thumbnail.
+  </Step>
+  <Step title="Name the preset">
+    Double-click the thumbnail label to rename the preset.
+  </Step>
+</Steps>
+
+## Creating a snapshot
+
+Snapshots capture the state of all animated parameters across the entire composition — not just one operator.
+
+<Steps>
+  <Step title="Deselect all operators">
+    Click on empty canvas space so no operator is selected. The Variations window switches to **Snapshots** mode.
+  </Step>
+  <Step title="Save a snapshot">
+    Click **+** to save the current global state as a snapshot.
+  </Step>
+</Steps>
+
+## Recalling and blending
+
+- **Click a thumbnail** to instantly apply that preset or snapshot.
+- **Drag between thumbnails** to interpolate (blend) between two states in real time.
+- This makes the Variations window ideal for live performance — you can smoothly transition between saved looks.
+
+## Deleting a variation
+
+Right-click a thumbnail and choose **Delete** to remove it.
+
+<Tip>
+  During live performance, keep the Variations window docked alongside the output preview. Use mouse clicks or a connected MIDI controller mapped to preset selection for hands-free switching.
+</Tip>
+
+<Note>
+  Presets are stored per-operator alongside the project. Snapshots are stored at the composition level. Both are saved in your `.t3` project file.
+</Note>

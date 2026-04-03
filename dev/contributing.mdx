@@ -1,0 +1,162 @@
+---
+title: "Contributing"
+description: "How to set up a development environment, build TiXL from source, and contribute code that meets the project's quality standards."
+---
+
+## Prerequisites
+
+Before you can build and run TiXL you need the following:
+
+| Requirement | Version / notes |
+|---|---|
+| Visual Studio | 2022 or later (Community edition works) |
+| .NET SDK | 9.0 (`rollForward: latestMinor` — see `global.json`) |
+| GPU | DirectX 11 compatible |
+| OS | Windows (the Editor uses DirectX 11 and Dear ImGui via SharpDX/Silk.NET) |
+
+<Info>
+The required SDK version is pinned in `global.json` at the repository root. Visual Studio's built-in SDK manager can install it, or you can use `winget install Microsoft.DotNet.SDK.9`.
+</Info>
+
+## Setting up the development environment
+
+<Steps>
+  <Step title="Fork and clone the repository">
+    Fork the repository on GitHub, then clone your fork locally:
+
+    ```bash
+    git clone https://github.com/YOUR_USERNAME/tixl.git
+    cd tixl
+    ```
+  </Step>
+  <Step title="Open the solution in Visual Studio">
+    Open `t3.sln` in Visual Studio 2022. The solution contains all projects: Core, Editor, Player, Operators, and support libraries.
+  </Step>
+  <Step title="Build the solution">
+    Build the full solution with **Build → Build Solution** (or `Ctrl+Shift+B`). The `Editor` project is the main entry point. All operator packages (`Operators/Lib`, `Operators/TypeOperators`, etc.) must build successfully for symbol loading to work at runtime.
+  </Step>
+  <Step title="Run the editor">
+    Set `Editor` as the startup project and press **F5**. The editor will initialize a DirectX 11 device, load operator packages, and open the authoring UI.
+  </Step>
+</Steps>
+
+## Project structure overview
+
+TiXL uses a three-layer architecture:
+
+- **`Core/`** — shared runtime: operator model, slots, resources, animation, compilation
+- **`Editor/`** — authoring UI built on Dear ImGui (via Silk.NET + SharpDX)
+- **`Player/`** — exported project playback host
+- **`Operators/`** — operator packages (`Lib`, `TypeOperators`, `Examples`, integration packages)
+
+See [Architecture overview](/dev/architecture) for the full dependency map and module descriptions.
+
+## Coding standards
+
+### Return statements
+
+Always place `return` on its own line. Never inline it after an `if`:
+
+```csharp
+// wrong
+if (condition) return;
+
+// correct
+if (condition)
+    return;
+```
+
+### Private fields
+
+- Place all private fields and private enums at the **end** of the class body.
+- Prefix every private field with `_`.
+
+```csharp
+internal sealed class MyOperator : Instance<MyOperator>
+{
+    // public members first ...
+
+    // private fields at the end
+    private Buffer _vertexBuffer;
+    private readonly MeshBuffers _data = new();
+}
+```
+
+### No allocations or LINQ in per-frame code
+
+Code that runs every frame — operator `Update()` methods, editor draw/update methods, hot rendering paths — must not allocate heap objects and must not use LINQ:
+
+```csharp
+// wrong: allocates a list and uses LINQ every frame
+var dirty = Inputs.Where(s => s.IsDirty).ToList();
+
+// correct: explicit loop with no allocation
+for (int i = 0; i < Inputs.Count; i++)
+{
+    if (Inputs[i].IsDirty) { /* ... */ }
+}
+```
+
+Allocations are acceptable inside explicit user-triggered actions (button clicks, file saves, etc.).
+
+### Variable naming
+
+Prefer slightly longer, descriptive names when it improves clarity:
+
+```csharp
+// less clear
+for (int i = 0; i < faces.Count; i++) { }
+
+// clearer
+for (int faceIndex = 0; faceIndex < faces.Count; faceIndex++) { }
+```
+
+### State and resource references
+
+- Do not store long-lived direct references to `Instance` or resource objects.
+- Store and resolve by `Guid` instead. Direct references become stale after graph reloads.
+
+```csharp
+// fragile
+private Instance _myInstance;
+
+// correct
+private Guid _myInstanceId;
+// resolve via registry when needed
+```
+
+### UI implementation (Editor only)
+
+- Use `UiColor` / `UiColors` instead of hard-coded `float4` color vectors.
+- Default to `Normal` and `Small` fonts; avoid introducing new font sizes.
+- Use `CustomComponents` and `FormInputs` helpers for ImGui layout and input tasks before writing custom widget code.
+
+## Review checklist
+
+Before submitting a pull request, verify:
+
+- [ ] No new heap allocations or LINQ in per-frame code paths
+- [ ] No new long-lived direct `Instance`/resource references (use `Guid`)
+- [ ] Operator changes follow [operator conventions](/dev/operator-conventions)
+- [ ] Private fields are at the end of classes and prefixed with `_`
+- [ ] `return` statements are on their own line
+- [ ] The diff is focused and minimal — no opportunistic refactors
+- [ ] Any frame-time or UI-responsiveness risk is explicitly called out in the PR description
+
+## Commit and PR workflow
+
+1. Create a branch from `main` for your change.
+2. Keep commits focused. One logical change per commit.
+3. Write a clear commit message that explains **why**, not just what changed.
+4. Open a pull request against `main`. Describe what changed, the performance impact (or confirm there is none), and any tradeoffs or residual risks.
+5. Address review feedback promptly.
+
+<Tip>
+If your change touches a per-frame code path, include a brief statement in the PR description confirming that you tested frame timing before and after the change.
+</Tip>
+
+## Getting help
+
+- **Discord**: the TiXL community Discord is the fastest way to ask questions and get feedback from other contributors.
+- **GitHub Issues**: report bugs, request features, or track ongoing work at the repository's Issues page.
+- **Wiki**: the project wiki at `https://github.com/tixl3d/tixl/wiki` contains how-to guides and operator convention details.

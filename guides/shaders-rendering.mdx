@@ -1,0 +1,165 @@
+---
+title: "Shaders and rendering"
+description: "Use DirectX 11, HLSL shaders, and TiXL's rendering pipeline to create GPU-accelerated visuals."
+---
+
+TiXL renders through a DirectX 11 pipeline. Every frame, the operator graph is evaluated and all draw commands are executed on the GPU. You can write custom HLSL shaders that integrate directly into the graph.
+
+## Rendering pipeline overview
+
+The rendering pipeline works as follows:
+
+1. **Scene assembly** — render operators accumulate draw commands into a scene graph each frame
+2. **Camera setup** — a camera operator sets the view/projection matrix in the `EvaluationContext`
+3. **Draw calls** — `DrawMesh`, `DrawPoints`, and similar operators issue DirectX 11 draw calls
+4. **Post-processing** — postfx operators read/write `Texture2D` resources
+5. **Output** — the final texture is presented to the output window or passed to a Spout/NDI sender
+
+## Render operators
+
+<CardGroup cols={2}>
+  <Card title="Render operators" icon="cube" href="/operators/render">
+    Full reference for DrawMesh, cameras, postfx, and scene operators.
+  </Card>
+  <Card title="Image operators" icon="image" href="/operators/image">
+    2D texture generation and effects.
+  </Card>
+</CardGroup>
+
+## Writing HLSL shaders
+
+TiXL operators can own HLSL shader files. The `ResourceManager` compiles them at runtime and reloads them automatically when the file changes on disk.
+
+### Shader file structure
+
+A shader-based operator typically consists of:
+- A `.cs` C# class (the operator logic)
+- A `.hlsl` shader file (the GPU program)
+- Optionally a `.t3` metadata file and `.t3ui` UI hints file
+
+### Fragment (pixel) shader example
+
+```hlsl MyEffect.hlsl
+Texture2D InputTexture : register(t0);
+SamplerState Sampler : register(s0);
+
+cbuffer Params : register(b0)
+{
+    float Intensity;
+    float _padding[3];
+}
+
+struct PSInput
+{
+    float4 position : SV_POSITION;
+    float2 uv : TEXCOORD;
+};
+
+float4 main(PSInput input) : SV_TARGET
+{
+    float4 color = InputTexture.Sample(Sampler, input.uv);
+    // Apply intensity scaling
+    color.rgb *= Intensity;
+    return color;
+}
+```
+
+### Compute shader example
+
+```hlsl SimulatePoints.hlsl
+struct Point
+{
+    float3 Position;
+    float W;
+    float4 Rotation;
+    float F;
+    float3 _padding;
+};
+
+RWStructuredBuffer<Point> Points : register(u0);
+
+cbuffer Params : register(b0)
+{
+    float Speed;
+    float DeltaTime;
+    uint Count;
+    float _padding;
+}
+
+[numthreads(64, 1, 1)]
+void main(uint3 DTid : SV_DispatchThreadID)
+{
+    if (DTid.x >= Count)
+        return;
+
+    Points[DTid.x].Position.y += Speed * DeltaTime;
+}
+```
+
+### Hot reload
+
+The shader compiler watches `.hlsl` files for changes. When you save a shader file, TiXL recompiles it and updates the operator immediately — no restart required.
+
+<Tip>
+  Shader compilation errors appear in the **Console** window. Keep it open while developing shaders.
+</Tip>
+
+## Post-processing effects
+
+Post-processing operators take a `Texture2D` input and output a modified `Texture2D`. Chain them together to build a complete post-processing stack.
+
+3D post-processing operators in `lib.render.postfx` wrap scene content and read depth/color buffers:
+
+| Operator | Effect |
+|---|---|
+| `DepthOfField` | Bokeh depth-of-field blur from depth buffer |
+| `MotionBlur` | Per-object motion blur using velocity vectors |
+| `GodRays` | Screen-space radial light shafts |
+| `SSAO` | Screen-space ambient occlusion |
+| `TemporalAccumulation` | Frame accumulation for noise reduction |
+| `ProjectLight` | Projects a texture as a spotlight onto geometry |
+
+For 2D image effects (bloom, color grading, tone mapping, blur), use the [Image operators](/operators/image) — specifically the `lib.image.fx` and `lib.image.color` subcategories.
+
+<Note>
+  Post-processing operators are part of the `lib.render.postfx` namespace. Search for them in the operator library with the keyword "postfx".
+</Note>
+
+## Camera setup
+
+Use camera operators to control the view:
+
+- **SetupCamera** — manual position, rotation, and FOV control
+- **OrbitCamera** — orbit around a target point with mouse interaction
+- **FlyCamera** — first-person fly-through navigation
+
+Connect a camera operator before your scene draw calls. The camera writes its matrices into the `EvaluationContext`, which draw operators read automatically.
+
+## Render targets and textures
+
+You can render to off-screen textures and use them as inputs to other operators:
+
+<Steps>
+  <Step title="Add a RenderTarget operator">
+    Search for `RenderTarget` in the operator library. This creates an off-screen texture at your specified resolution.
+  </Step>
+  <Step title="Connect your scene">
+    Connect your scene operators (camera + draw calls) into the RenderTarget's input slot.
+  </Step>
+  <Step title="Use the texture">
+    Connect the RenderTarget's output to any operator that accepts a `Texture2D` input — for example, a mesh with a texture slot, or a post-processing chain.
+  </Step>
+</Steps>
+
+## Shader includes and shared code
+
+HLSL files can include shared utility headers using standard `#include` directives. TiXL resolves includes relative to the project and the operator package resource directories.
+
+```hlsl
+#include "lib/shared/point.hlsl"
+#include "lib/shared/hash-functions.hlsl"
+```
+
+<Tip>
+  Browse `Operators/Lib/` for shared `.hlsl` include files that provide math utilities, noise functions, and the `Point` struct definition used throughout the point/particle system.
+</Tip>

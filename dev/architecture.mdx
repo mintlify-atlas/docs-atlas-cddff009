@@ -1,0 +1,109 @@
+---
+title: "Architecture overview"
+description: "A map of TiXL's three-layer architecture: Core runtime, Editor, and Player, with their operator packages and shared support services."
+---
+
+TiXL is organized into three main runtime layers and a set of operator packages. The dependency flow is intentionally one-directional: Editor and Player both depend on Core; operator packages depend on Core (and sometimes Logging or Serialization). Nothing in Core depends on Editor.
+
+## System map
+
+### Core layer
+
+`Core/` is the shared runtime engine. It contains everything that both the Editor and the Player need to run operators and manage resources.
+
+| Module | Responsibility |
+|---|---|
+| `Core/Operator/` | Symbol/Instance model, slot system, graph connections, evaluation context |
+| `Core/Compilation/` | Runtime assembly loading, operator type discovery, `TixlAssemblyLoadContext` |
+| `Core/Model/` | `SymbolPackage` metadata, project model, release info |
+| `Core/Resource/` | `ResourceManager` — shader compilation, texture/buffer loading, GPU lifecycle |
+| `Core/Rendering/` | Rendering data structures, PBR material types, camera math |
+| `Core/DataTypes/` | Shared value types consumed by operators and renderers (`MeshBuffers`, `Texture2D`, etc.) |
+| `Core/Animation/` | `Animator`, keyframe curves, `VDefinition` evaluation |
+
+### Editor layer
+
+`Editor/` is the authoring application. It is built on [Dear ImGui](https://github.com/ocornut/imgui) via a Silk.NET/SharpDX bridge and is the main entry point for development.
+
+| Module | Responsibility |
+|---|---|
+| `Editor/Program.cs` | Bootstrap: initializes the DirectX 11 device, loads packages, starts the render loop |
+| `Editor/Compilation/` | Project/package lifecycle (`ProjectSetup.cs`), C# recompilation (`Compiler.cs`) |
+| `Editor/Gui/` | All ImGui windows, graph canvas, parameter panels, asset library, dialogs |
+| `Editor/UiModel/` | Commands and state transitions backing UI actions |
+
+### Player layer
+
+`Player/` is the exported playback host. It boots the same Core runtime but with no Editor UI. Startup, input handling, loading, and the render loop are split across partial classes under `Player/Program.*`.
+
+### Operator packages
+
+| Package | Contents |
+|---|---|
+| `Operators/Lib/` | Primary built-in operators (render, mesh, image, audio, math, …) |
+| `Operators/TypeOperators/` | Foundational type-building operators (Collections, Gfx primitives, Value types) |
+| `Operators/Examples/` | Reference compositions showing expected usage patterns |
+| `Mediapipe`, `Spout`, `Ndi`, `unsplash`, `skills` | Specialized integration packages |
+
+### Shared support services
+
+| Service | Purpose |
+|---|---|
+| `Logging/` | Diagnostics pipeline shared by all projects |
+| `Serialization/` | Serialization helpers for `.t3` and `.t3ui` files |
+| `SystemUi/` | UI abstraction contracts used by Core to avoid direct ImGui dependency |
+| `SilkWindows/` / `ImguiWindows/` | Platform/window/input/ImGui bridge |
+| `MsForms/` | Windows Forms shell for dialogs |
+| `ProjectUpdater/` | Project migration and update tooling |
+
+## Key dependency flow
+
+```
+Editor  ──────────────────────────────┐
+Player  ──────────────────────────────┤──▶  Core  ──▶  Logging
+Operators/*  ─────────────────────────┘              ──▶  Serialization
+                                                      ──▶  SystemUi
+
+Editor  ──▶  MsForms, SilkWindows
+SilkWindows  ──▶  ImguiWindows, Logging, Serialization, SystemUi
+```
+
+The practical placement rule that follows from this:
+
+- Runtime behavior and state → `Core`
+- Editor-only UX and tooling → `Editor`
+- Standalone playback concerns → `Player`
+- Content and effect logic → operator packages
+
+<Note>
+Keep changes scoped to the smallest project boundary that solves the task. Mixing Editor concerns into Core, or Core concerns into operator packages, creates coupling that breaks this layering.
+</Note>
+
+## Reading order for new contributors
+
+<Steps>
+  <Step title="Start with the orientation documents">
+    Read `README.md`, then `AGENT_INSTRUCTIONS.md` and `SOLUTION_OVERVIEW.md` for the full picture.
+  </Step>
+  <Step title="Understand the runtime model">
+    Read `Core/Operator/` (Symbol, Instance, slots) and `Core/Resource/` (ResourceManager).
+  </Step>
+  <Step title="Understand the editor bootstrap">
+    Read `Editor/Program.cs` and `Editor/Compilation/ProjectSetup.cs`.
+  </Step>
+  <Step title="Explore the UI layer">
+    Browse `Editor/Gui/` and `Editor/UiModel/` for the authoring surface.
+  </Step>
+  <Step title="Study operator implementations">
+    Read `Operators/Lib/`, `Operators/TypeOperators/`, and `Operators/Examples/`.
+  </Step>
+</Steps>
+
+<CardGroup cols={2}>
+  <Card title="Core runtime" icon="cpu" href="/dev/core-runtime">
+    Symbol/Instance model, slot system, EvaluationContext, ResourceManager, and the compilation pipeline explained in depth.
+  </Card>
+  <Card title="Writing operators" icon="code" href="/dev/writing-operators">
+    Step-by-step guide to creating a new operator, adding inputs and outputs, and writing HLSL shaders.
+  </Card>
+</CardGroup>

@@ -1,0 +1,139 @@
+---
+title: "Render operators"
+description: "Operators for drawing geometry, setting up cameras, lighting, post-processing, and composing the final rendered frame."
+---
+
+Render operators form the scene graph of a TiXL composition. They produce and consume `Command` values — deferred instructions that are flushed to the GPU at the end of each frame. Nesting render operators inside one another builds a hierarchical scene: transforms wrap draw calls, cameras wrap scene content, and post-effects wrap everything.
+
+The output of the root render operator is ultimately consumed by a `RenderTarget` (in `lib.image.generate.basic`) to produce a `Texture2D` that can be displayed or passed into image operators.
+
+<Note>
+Most render operators output a `Command` slot. Operators that accept child content (cameras, transforms, groups) have a `Command` input that they wrap. Leaf operators such as draw calls have no `Command` input.
+</Note>
+
+## Subcategories
+
+<AccordionGroup>
+  <Accordion title="basic — 2D quads, text, and utility draw calls">
+    The `basic` subcategory contains fundamental draw primitives and 2D rendering helpers that do not require 3D geometry.
+
+    | Operator | Description |
+    |----------|-------------|
+    | `DrawScreenQuad` | Draws a textured quad in screen space. Accepts a `Texture2D`, `Color` (Vector4), `Width`, `Height`, `Position`, `BlendMode`, depth test/write toggles, and a texture `Filter`. |
+    | `DrawScreenQuadAdvanced` | Extended screen quad with additional shader and blending options. |
+    | `DustParticles` | A self-contained dust/ambient particle effect drawn in screen space. |
+    | `FadingSlideShow` | Crossfades between a sequence of textures over time. |
+    | `Layer2d` | Composite multiple 2D layers with individual transforms and blend modes. |
+    | `ShadowPlane` | Renders a shadow-receiving ground plane. |
+    | `Text` | Renders a text string using a bitmap font; supports alignment, size, and color. |
+    | `TextOutlines` | Renders text as outlined strokes rather than filled glyphs. |
+  </Accordion>
+
+  <Accordion title="camera — view and projection setup">
+    Camera operators establish the view and projection matrices for a subtree of render commands. Place the scene content as a child of a camera operator to render it from that viewpoint.
+
+    | Operator | Description |
+    |----------|-------------|
+    | `Camera` | Full perspective camera. Parameters: `Position`, `Target`, `Up`, `FieldOfView`, `AspectRatio`, `ClipPlanes`, `LensShift`, `Roll`, `RotationOffset`, `PositionOffset`. |
+    | `OrbitCamera` | Camera that orbits a target point. Controls: orbit angles, distance, and target position. |
+    | `OrthographicCamera` | Orthographic (parallel projection) camera. |
+    | `ActionCamera` | Camera with built-in dynamic motion and shake effects. |
+    | `CameraWithRotation` | Camera driven by explicit rotation angles instead of a look-at target. |
+    | `BlendCameras` | Interpolates between two camera definitions by a blend factor. |
+    | `ReuseCamera` | Re-applies the most recently active camera without re-evaluating children. |
+    | `ShiftCamera` | Applies a 2D shift (lens shift / camera pan) to the current camera. |
+    | `CamPosition` | Outputs the current camera's world-space position as a `Vector3`. |
+    | `CurrentCamMatrices` | Exposes the raw view and projection matrices from the active camera. |
+  </Accordion>
+
+  <Accordion title="shading — materials, lights, and environment">
+    Shading operators configure the lighting and material state consumed by draw operators during rendering.
+
+    | Operator | Description |
+    |----------|-------------|
+    | `SetMaterial` | Applies a material definition (albedo, roughness, metallic, emissive) to child draw calls. |
+    | `UseMaterial` | References a named material defined elsewhere in the graph. |
+    | `DefineMaterials` | Declares a reusable material block. |
+    | `PointLight` | Defines a point light source (position, color, intensity, range). |
+    | `SetPointLight` | Injects a point light into the shading context for child operators. |
+    | `SetFog` | Configures depth fog (color, near/far distances, density). |
+    | `SetEnvironment` | Sets an HDR environment map for image-based lighting and reflections. |
+    | `SetShadow` | Enables and configures shadow mapping for a subtree. |
+    | `LenseFlareSetup` | Adds a lens flare effect tied to a light source. |
+    | `LenseFlareSetupAdvanced` | Extended lens flare with per-element control. |
+    | `Equirectangle` | Projects an equirectangular panorama as a background or environment. |
+    | `TextureToCubeMap` | Converts a `Texture2D` panorama into a cube map for IBL. |
+    | `GetPointLightOccclusion` | Samples point-light occlusion for use in custom shaders. |
+    | `SetRequestedResolution` | Overrides the rendering resolution for a subtree. |
+    | `IntToWrapmode` | Converts an integer to a texture wrap mode enum for use in shader parameters. |
+  </Accordion>
+
+  <Accordion title="postfx — full-screen post-processing effects">
+    Post-processing operators apply full-screen image effects to the rendered 3D output. They wrap scene content and read the rendered colour and depth buffers. For 2D texture effects (bloom, color grading, blur), see the [Image operators](/operators/image).
+
+    | Operator | Description |
+    |----------|-------------|
+    | `DepthOfField` | Bokeh depth-of-field blur based on the depth buffer. |
+    | `MotionBlur` | Per-object motion blur using velocity vectors. |
+    | `GodRays` | Screen-space radial light shafts emanating from a light source. |
+    | `SSAO` | Screen-space ambient occlusion for contact shadows. |
+    | `TemporalAccumulation` | Accumulates frames over time for noise reduction and ghosting effects. |
+    | `ProjectLight` | Projects a texture as a spotlight onto scene geometry. |
+  </Accordion>
+
+  <Accordion title="scene — scene graph and GLTF loading">
+    | Operator | Description |
+    |----------|-------------|
+    | `DrawScene` | Evaluates and renders all child `Command` inputs as a scene. |
+    | `LoadGltfScene` | Loads a GLTF/GLB file and renders it as a scene with materials and hierarchy. |
+  </Accordion>
+
+  <Accordion title="transform — 3D spatial transforms">
+    Transform operators apply position, rotation, and scale to child render commands. They modify the `ObjectToWorld` matrix in the evaluation context.
+
+    | Operator | Description |
+    |----------|-------------|
+    | `Transform` | Full 3D transform: `Translation` (Vector3), `Rotation` (Vector3 in degrees), `Scale` (Vector3), `Pivot`. |
+    | `Group` | Groups multiple `Command` children under a single node, optionally with a transform. |
+    | `RotateAroundAxis` | Rotates children around an arbitrary axis by an angle. |
+    | `RotateTowards` | Orients children to face a target point. |
+    | `Shear` | Applies a shear deformation to child geometry. |
+    | `SpreadIntoGrid` | Repeats children arranged on a 2D or 3D grid. |
+    | `SpreadLayout` | Repeats children along a user-defined layout path. |
+    | `SliceViewPort` | Splits the viewport and renders different content in each slice. |
+  </Accordion>
+
+  <Accordion title="sprite — billboard and sprite rendering">
+    | Operator | Description |
+    |----------|-------------|
+    | `DrawPointSprites` | Renders a `BufferWithViews` point cloud as camera-facing sprite quads. Each point drives position, size, and color. |
+    | `DrawPointSpritesShaded` | Shaded variant of `DrawPointSprites` with normal-based lighting. |
+    | `TextSprites` | Renders text strings positioned at point-cloud locations. |
+  </Accordion>
+
+  <Accordion title="gizmo — debug and editor helpers">
+    Gizmo operators draw debug visualisations in the 3D viewport. They have no effect on the final render output.
+
+    | Operator | Description |
+    |----------|-------------|
+    | `DrawBoxGizmo` | Draws a wireframe bounding box. |
+    | `DrawSphereGizmo` | Draws a wireframe sphere. |
+    | `ConeGizmo` | Draws a wireframe cone. |
+    | `DrawLineGrid` | Draws a reference grid. |
+    | `GridPlane` | Draws a shaded grid plane. |
+    | `DrawCamGizmos` | Visualises camera frustums. |
+    | `Locator` | Draws axis indicators at a world-space position. |
+    | `PlotValueCurve` | Plots a float value over time as an on-screen curve. |
+    | `VisibleGizmos` | Toggles gizmo visibility globally. |
+    | `DrawSpatialAudioGizmos` | Visualises spatial audio source positions. |
+  </Accordion>
+
+  <Accordion title="utils — rendering utilities">
+    | Operator | Description |
+    |----------|-------------|
+    | `DrawAsSplitView` | Renders the same scene from two viewpoints side by side. |
+    | `RepeatWithMotionBlur` | Renders the child command multiple times with accumulation for motion blur. |
+    | `RequestedResolution` | Reads and exposes the current requested render resolution as a `Vector2`. |
+    | `ConvertEquirectangle` | Converts between equirectangular and cube-map projections. |
+  </Accordion>
+</AccordionGroup>

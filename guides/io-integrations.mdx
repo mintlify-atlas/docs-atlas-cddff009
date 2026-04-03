@@ -1,0 +1,259 @@
+---
+title: "I/O and integrations"
+description: "Connect TiXL to audio, MIDI, OSC, DMX, Spout, NDI, serial devices, and video sources to drive real-time motion graphics from external signals."
+---
+
+TiXL ships with a comprehensive set of I/O operators that let you feed live data into your compositions. Every operator in the `io/` library follows the same pattern: drop it into your graph, wire its outputs to any parameter, and your visuals react to the world in real time.
+
+<Tabs>
+  <Tab title="Audio">
+
+## Audio
+
+Audio reactivity is one of the most common ways to animate a TiXL composition. The engine continuously analyses the system audio input (or a dedicated audio device) and exposes the results through a set of dedicated operators.
+
+### Key operators
+
+| Operator | Purpose |
+|---|---|
+| `AudioReaction` | Core audio-analysis operator — outputs a float `Level`, a `WasHit` bool, and a running `HitCount` |
+| `AudioPlayer` | Plays an audio file in sync with composition playback |
+| `SpatialAudioPlayer` | 3-D positioned audio player, also exposes volume as a driveable float |
+| `AudioToneGenerator` | Generates a configurable sine/square/saw tone for testing audio chains |
+| `AudioFrequencies` | Exposes per-frequency-band energy as a list |
+| `AudioWaveform` | Outputs a time-domain waveform buffer |
+| `DetectBpm` | Analyses incoming audio and estimates the BPM |
+| `DetectBeatOffset` | Detects phase offset of a beat relative to the playback timeline |
+
+### AudioReaction in depth
+
+`AudioReaction` is the primary bridge between sound and parameters. It samples one of several internal analysis buffers:
+
+- **RawFft** — raw FFT gain buffer
+- **NormalizedFft** — FFT normalised for perceived loudness
+- **FrequencyBands** — energy in musical frequency bands
+- **FrequencyBandsPeaks** — peak-hold values per band
+- **FrequencyBandsAttacks** — fast-attack envelope per band
+
+You control a frequency window with `WindowCenter` and `WindowWidth` (both 0–1), allowing you to isolate kick drum energy, hi-hats, or mid-range vocals independently.
+
+The `Output` mode determines what the `Level` float represents:
+
+- **Pulse** — a short spike (decays from 1 to 0 after each hit)
+- **TimeSinceHit** — seconds elapsed since the last beat
+- **Count** — cumulative hit counter
+- **Level** — raw instantaneous energy of the window
+- **AccumulatedLevel** — a running integral, useful for driving ever-changing parameters
+
+### Driving parameters from audio
+
+Connect `AudioReaction.Level` directly to any float parameter. To convert the 0–1 float to a useful range, insert a `Remap` or `Math` operator in between.
+
+<Tip>
+Set **Output** to `Pulse` and wire it to a scale parameter to get a classic audio-reactive beat pump effect.
+</Tip>
+
+  </Tab>
+  <Tab title="MIDI / OSC">
+
+## MIDI
+
+TiXL uses NAudio to receive MIDI from any device visible to Windows. MIDI devices are scanned automatically; if a device is not found, open **Windows › Settings › MIDI › Rescan Devices** to refresh the list.
+
+### Operators
+
+| Operator | Purpose |
+|---|---|
+| `MidiInput` | Reads a single CC, Note, or Pitchbend value from a MIDI device |
+| `MidiControlOutput` | Outputs a CC value as a float |
+| `MidiNoteOutput` | Outputs note-on/off events |
+| `MidiTriggerOutput` | Fires a bool trigger on a matching note |
+| `MidiPitchbendOutput` | Reads pitchbend as a float |
+| `MidiSysexOutput` | Receives SysEx messages |
+| `MidiClip` | Plays back a recorded MIDI clip in sync with the timeline |
+| `MidiRecording` | Records incoming MIDI events to a clip |
+| `LinkToMidiTime` | Synchronises the composition clock to MIDI Timecode |
+| `MidiOutput` | Sends MIDI CC or Note messages to a device |
+
+### Mapping a CC to a parameter
+
+<Steps>
+  <Step title="Add MidiInput">
+    Drop a `MidiInput` operator into your graph. Leave the **Device** field empty to receive from all connected devices.
+  </Step>
+  <Step title="Use Teach mode">
+    Enable **TeachTrigger** on the `MidiInput` operator, then move the physical knob or fader. TiXL automatically fills in the **Device**, **Channel**, and **Control** fields from the first received message.
+  </Step>
+  <Step title="Set output range">
+    Use `OutputRange` (a Vector2 of min/max) to remap the 0–127 MIDI value to whatever range your parameter expects.
+  </Step>
+  <Step title="Apply damping">
+    Increase **Damping** (0–1) to smooth out sudden value jumps and avoid jitter.
+  </Step>
+  <Step title="Connect to a parameter">
+    Wire `MidiInput.Result` to any float input in your graph.
+  </Step>
+</Steps>
+
+### MIDI clock sync
+
+Set **EventType** on `MidiInput` to `MidiTime` to receive MIDI clock ticks (24 ticks per quarter note). The output counts quarter-note beats, which you can use with `LinkToMidiTime` to lock the composition BPM to an external sequencer or DJ deck.
+
+---
+
+## OSC
+
+The `OscInput` operator listens on a UDP port for Open Sound Control messages. Any application that can send OSC — TouchOSC, Lemur, Max/MSP, Pure Data, Ableton Live — can drive TiXL parameters.
+
+### Operators
+
+| Operator | Purpose |
+|---|---|
+| `OscInput` | Receives OSC messages and outputs a `Dict<float>` (address → value map) and a `List<float>` of values |
+| `OscOutput` | Sends OSC messages to a target host and port |
+
+### Receiving OSC
+
+<Steps>
+  <Step title="Add OscInput">
+    Drop `OscInput` into your graph and set the **Port** number (e.g. `7000`).
+  </Step>
+  <Step title="Set the address filter">
+    Enter the OSC address path you want to receive in the **Address** field (e.g. `/slider/1`). Leave it empty to receive all messages arriving on the port.
+  </Step>
+  <Step title="Connect the output">
+    Wire `OscInput.Values` to a `GetListElement` operator to extract a specific index, or use `OscInput.Contents` to access values by their full OSC address path.
+  </Step>
+</Steps>
+
+<Note>
+The **Address** dropdown is auto-populated from messages already received on the configured port. If the dropdown is empty, make sure your sending device is running and not blocked by a firewall or macOS/Windows Local Network permission.
+</Note>
+
+The `WasTrigger` output fires `true` for exactly one frame when a new message arrives, making it ideal for triggering one-shot effects.
+
+  </Tab>
+  <Tab title="Video">
+
+## Video
+
+TiXL can load video files, receive webcam frames, and ingest network video streams.
+
+### File and device operators
+
+| Operator | Purpose |
+|---|---|
+| `PlayVideo` | Plays a video file and outputs a `Texture2D` each frame |
+| `PlayVideoClip` | Plays a `VideoClip` asset in sync with the composition timeline |
+| `VideoClip` | Defines a video clip asset (path, in/out points) |
+| `VideoDeviceInput` | Captures from a webcam or video capture card |
+| `VideoStreamInput` | Receives an RTSP or HTTP video stream |
+| `CameraCalibrator` | Calibrates a physical camera using a checkerboard pattern |
+
+### Playing a video file
+
+<Steps>
+  <Step title="Add PlayVideo">
+    Drop `PlayVideo` into your graph and connect a **FilePath** string to the `Path` input.
+  </Step>
+  <Step title="Connect the texture">
+    Wire `PlayVideo.Texture` to any operator that accepts a `Texture2D` input, such as `DrawQuad` or a custom shader operator.
+  </Step>
+  <Step title="Control playback">
+    Use the **Speed** and **Loop** parameters to control playback. Connecting the composition's time signal to **Time** keeps video in sync with the timeline.
+  </Step>
+</Steps>
+
+### Webcam input
+
+`VideoDeviceInput` enumerates all DirectShow-compatible capture devices. Select your webcam from the **Device** dropdown. The output is a live `Texture2D` updated every frame at the device's native frame rate.
+
+---
+
+## Spout (GPU texture sharing)
+
+Spout is a Windows-only, zero-copy GPU texture sharing protocol. It lets TiXL exchange `Texture2D` buffers with other Spout-capable applications (Resolume, MadMapper, Unity, etc.) without copying pixel data through system RAM.
+
+<Warning>
+Spout requires both applications to run on the same Windows machine. It does not work over a network — use NDI for that.
+</Warning>
+
+### Operators
+
+| Operator | Purpose |
+|---|---|
+| `SpoutInput` | Receives a texture from another Spout sender on the same machine |
+| `SpoutOutput` | Sends TiXL's output texture to any Spout receiver |
+
+Add `SpoutOutput` at the end of your render graph and set a **SenderName**. Other applications discover TiXL's output by scanning for Spout senders and selecting that name.
+
+---
+
+## NDI (Network video)
+
+NDI (Network Device Interface) streams video over a standard Ethernet network at low latency. Unlike Spout, NDI works between separate machines on the same LAN.
+
+### Operators
+
+| Operator | Purpose |
+|---|---|
+| `NdiInput` | Receives an NDI video stream and outputs a `Texture2D` |
+| `NdiOutput` | Encodes and broadcasts TiXL's output as an NDI stream |
+| `ScreenCapture` | Captures a region of the screen and publishes it as an NDI source |
+
+Add `NdiOutput` to your graph and set a **SourceName**. Any NDI-capable device or application on the LAN (including other TiXL instances) can then receive the stream by selecting that source name.
+
+  </Tab>
+  <Tab title="Network / Hardware">
+
+## DMX lighting
+
+TiXL supports DMX512 both via USB DMX adapters and over the network using ArtNet and sACN (Streaming ACN / E1.31).
+
+### Operators
+
+| Operator | Purpose |
+|---|---|
+| `DMXOutput` | Sends DMX512 channels to a USB DMX interface |
+| `ArtnetOutput` | Broadcasts DMX universes over Art-Net UDP |
+| `ArtnetInput` | Receives Art-Net DMX universe data |
+| `SacnOutput` | Broadcasts DMX universes over sACN (E1.31) |
+| `SacnInput` | Receives sACN DMX universe data |
+| `PointsToDMXLights` | Maps a point list to DMX fixture addresses |
+
+`PointsToDMXLights` is particularly useful for controlling moving-head fixtures: feed it a list of 3-D positions and orientations from your scene graph and it translates them into pan/tilt/colour DMX values.
+
+---
+
+## Serial / USB devices
+
+`SerialInput` and `SerialOutput` give TiXL a direct connection to any serial-over-USB device, such as Arduino, Teensy, or custom hardware.
+
+### Operators
+
+| Operator | Purpose |
+|---|---|
+| `SerialInput` | Reads lines or bytes from a COM port |
+| `SerialOutput` | Writes bytes or strings to a COM port |
+
+Configure the **PortName** (e.g. `COM3`), **BaudRate**, and **DataBits** on each operator. `SerialInput` outputs a string per received line; parse it with `StringToFloat` or similar operators to drive float parameters.
+
+---
+
+## Additional network protocols
+
+TiXL also includes operators for more general network and data exchange:
+
+| Category | Operators |
+|---|---|
+| **HTTP** | Fetch data from REST APIs |
+| **TCP / UDP** | Raw socket communication |
+| **WebSocket** | Bi-directional JSON or binary messaging |
+| **JSON** | Parse JSON payloads into parameter values |
+| **FreeD** | Receive virtual camera tracking data (broadcast TV standard) |
+| **PosiStageNet** | Receive performer tracking data from PosiStageNet |
+| **PTZ cameras** | Control pan/tilt/zoom cameras via IP |
+| **Unsplash** | Fetch random images from the Unsplash API |
+
+  </Tab>
+</Tabs>

@@ -1,0 +1,107 @@
+---
+title: "Graph editor"
+description: "Navigate the MagGraph canvas, add and connect operators, manage groups, and use keyboard shortcuts to build compositions efficiently."
+---
+
+The graph editor is the primary authoring surface in TiXL. It displays your composition as a network of operator nodes connected by typed wires. The implementation lives in `Editor/Gui/MagGraph/` and is built on the `MagGraphCanvas` rendering layer.
+
+## Navigating the canvas
+
+| Action | Input |
+|---|---|
+| Pan | Middle-mouse drag |
+| Zoom | Scroll wheel |
+| Frame selection | **F** |
+| Frame entire graph | **Shift+F** |
+| Navigate back | **Alt+Left** |
+| Navigate forward | **Alt+Right** |
+
+The canvas uses an infinite 2D coordinate space. Zoom level and scroll position are preserved independently per composition, so you can drill into a nested symbol and return to where you were.
+
+## Adding operators
+
+<Steps>
+  <Step title="Open the search popup">
+    Right-click on an empty area of the canvas to open the context menu, then choose **Add operator** — or press **Ctrl+Enter** anywhere on the canvas. A search popup appears.
+  </Step>
+  <Step title="Type to filter">
+    Start typing the operator name or category. Results are filtered live against all loaded operator packages. Operators are shown with their full namespace (e.g., `lib.render.basic.DrawMesh`).
+  </Step>
+  <Step title="Confirm the selection">
+    Click an entry or press **Enter** to place the operator at the current canvas position. The new node appears selected and ready to connect.
+  </Step>
+</Steps>
+
+<Tip>
+  If an output slot is selected when you open the search popup, TiXL will automatically connect a compatible operator to that slot after placement.
+</Tip>
+
+## Connecting operators
+
+Each node exposes colored pins on its left edge (inputs) and right edge (outputs). The pin color encodes the slot type — for example, orange for `Texture2D`, blue for `float`, green for `Command`/layer.
+
+<Steps>
+  <Step title="Start a connection">
+    Click and drag from an output pin. A wire follows your cursor.
+  </Step>
+  <Step title="Drop on a compatible input">
+    Hover over a target node. Compatible input pins highlight. Release the mouse button to complete the connection.
+  </Step>
+  <Step title="Disconnect a wire">
+    Right-click a connected input pin and choose **Disconnect**, or drag the wire away from the pin and release on empty canvas.
+  </Step>
+</Steps>
+
+<Note>
+  Connections are type-checked. You cannot connect an output slot of type `Texture2D` to an input slot of type `float`. Incompatible pins remain unhighlighted during dragging.
+</Note>
+
+## Selecting and moving nodes
+
+- **Click** a node to select it and show its parameters in the Parameter window.
+- **Ctrl+Click** to add or remove nodes from the selection.
+- **Drag a rectangle** on empty canvas to box-select multiple nodes.
+- **Drag** any selected node to move the entire selection. Snapping is applied to neighbouring nodes to help with alignment.
+- **Delete** removes the selected nodes and their connections.
+
+## Groups and composites
+
+Any selection of nodes can be collapsed into a new symbol (composite operator):
+
+1. Select the nodes you want to group.
+2. Right-click → **Group into symbol** (or the equivalent context menu entry).
+3. TiXL creates a new `Symbol`, moves the selected children into it, and replaces them with a single node in the current graph.
+
+To navigate inside a composite, double-click the node. The breadcrumb bar at the top of the canvas shows your current depth in the instance hierarchy. Click any crumb to jump back up.
+
+## Bookmarks and navigation
+
+The graph maintains a navigation history per composition. Use **Alt+Left** / **Alt+Right** to move through previously visited instance paths — useful when working across deeply nested symbols.
+
+Right-click on the canvas background → **Bookmarks** to pin a named view position that you can jump to at any time.
+
+## Parameter popup
+
+Right-click a node and choose **Parameters** to open an inline parameter popup without leaving the graph. This gives quick access to the most common inputs of the selected operator without switching keyboard focus to the Parameter window.
+
+The full Parameter window (docked by default on the right side) shows all inputs with their types, current values, and animation state.
+
+## Keyboard shortcuts
+
+| Shortcut | Action |
+|---|---|
+| **Ctrl+Enter** | Add operator (open search popup) |
+| **F** | Frame selection (zoom to fit selected nodes) |
+| **Shift+F** | Frame entire graph |
+| **Space** | Play / pause timeline |
+| **Delete** | Remove selected nodes |
+| **Ctrl+D** | Duplicate selection |
+| **Ctrl+Z** | Undo |
+| **Ctrl+Shift+Z** | Redo |
+| **Ctrl+C / Ctrl+V** | Copy / paste nodes |
+| **Alt+Left / Alt+Right** | Navigate backwards / forwards in instance history |
+| **D** | Toggle disabled state for selected nodes |
+
+<Warning>
+  Deleting a node that is referenced inside multiple compositions removes it from all of them. Use **Toggle disabled** (**D**) to hide a node's effect without removing it.
+</Warning>

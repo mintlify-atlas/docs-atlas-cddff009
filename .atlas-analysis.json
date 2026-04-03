@@ -1,0 +1,105 @@
+{
+  "projectType": "general",
+  "projectName": "TiXL",
+  "projectDescription": "TiXL is an open source, realtime motion graphics tool combining node-based procedural content creation, keyframe animation, and GPU-accelerated rendering for artists and technical creatives.",
+  "theme": "willow",
+  "primaryColor": "#fc3d9d",
+  "lightColor": "#fc89c6",
+  "darkColor": null,
+  "navigation": {
+    "tabs": [
+      {
+        "tab": "User Guide",
+        "groups": [
+          {
+            "group": "Get Started",
+            "pages": [
+              "introduction",
+              "installation",
+              "quickstart"
+            ]
+          },
+          {
+            "group": "Core Concepts",
+            "pages": [
+              "concepts/how-tixl-works",
+              "concepts/graph-editor",
+              "concepts/operators",
+              "concepts/timeline-animation"
+            ]
+          },
+          {
+            "group": "Working with TiXL",
+            "pages": [
+              "guides/io-integrations",
+              "guides/shaders-rendering",
+              "guides/export-standalone",
+              "guides/presets-variations"
+            ]
+          }
+        ]
+      },
+      {
+        "tab": "Operator Reference",
+        "groups": [
+          {
+            "group": "Operators",
+            "pages": [
+              "operators/overview",
+              "operators/render",
+              "operators/image",
+              "operators/mesh",
+              "operators/point",
+              "operators/particle",
+              "operators/io"
+            ]
+          }
+        ]
+      },
+      {
+        "tab": "Developer Guide",
+        "groups": [
+          {
+            "group": "Architecture",
+            "pages": [
+              "dev/architecture",
+              "dev/core-runtime",
+              "dev/operator-conventions"
+            ]
+          },
+          {
+            "group": "Contributing",
+            "pages": [
+              "dev/contributing",
+              "dev/writing-operators",
+              "dev/performance-guidelines"
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  "keyFeatures": [
+    "Node-based (graph) procedural content creation with real-time rendering",
+    "Keyframe timeline animation with curve editing and dope sheet",
+    "DirectX 11 GPU-accelerated rendering pipeline with HLSL shader support",
+    "Extensive operator library: mesh, point clouds, particles, image FX, post-processing",
+    "Audio reactivity and MIDI/OSC/DMX/serial input integrations",
+    "Spout, NDI, and webcam video I/O for live performance and VJ use",
+    "Variations and preset system for exploring parameter spaces",
+    "Export to small standalone executable for deployment without the editor",
+    "Dear ImGui-based editor UI with real-time parameter editing"
+  ],
+  "publicApiSurface": [
+    "Symbol / SymbolRegistry — operator type registry and instantiation",
+    "Instance — runtime operator node with input/output slots",
+    "EvaluationContext — per-frame evaluation context passed through the graph",
+    "Slots (InputSlot<T>, OutputSlot<T>) — typed data connections between operators",
+    "ResourceManager — GPU resource loading, shader compilation, and asset management",
+    "Animator / VDefinition — keyframe animation curves and interpolation",
+    "PlaybackSettings — timeline playback state and loop controls",
+    "Player / Program — standalone exported project runtime bootstrap",
+    "IShaderOperator — interface for operators that own HLSL shader resources",
+    "Operator packages: Lib, TypeOperators, Mediapipe, Spout, NDI, Unsplash"
+  ]
+}

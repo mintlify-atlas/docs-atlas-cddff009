@@ -1,0 +1,227 @@
+---
+title: "Performance guidelines"
+description: "Rules for keeping TiXL's per-frame code paths allocation-free, LINQ-free, and GPU-efficient, with concrete before/after examples."
+---
+
+TiXL uses Dear ImGui for its authoring UI, and UI rendering is synchronized with output rendering in a single frame loop. Every millisecond spent in a per-frame code path directly reduces UI responsiveness. An operator that allocates or does unnecessary work doesn't just hurt rendering — it makes the editor sluggish.
+
+<Warning>
+The performance rules in this guide are **not** style preferences. Violating them in per-frame code paths degrades the interactive experience for all users of a project.
+</Warning>
+
+## What counts as a per-frame code path
+
+Any method that is called once or more per rendered frame is a per-frame code path. This includes:
+
+- Operator `Update()` methods
+- Editor draw/update methods in `Editor/Gui/`
+- Slot evaluation actions
+- Resource update callbacks
+
+Allocations are acceptable in explicit user-triggered actions: button clicks, file saves, project loads.
+
+<AccordionGroup>
+  <Accordion title="No heap allocations in Update()">
+    The most common performance mistake is creating new heap objects every frame. The garbage collector accumulates these and eventually pauses the process for collection — causing visible frame hitches.
+
+    **Resize pre-allocated arrays only when dimensions change:**
+
+    ```csharp
+    // [!code --]
+    // Bad: allocates a new array every frame
+    private void Update(EvaluationContext context)
+    {
+        var vertices = new PbrVertex[vertexCount]; // [!code --]
+        // fill vertices ...
+    }
+
+    // [!code ++]
+    // Good: reuse the array; reallocate only when size changes
+    private void Update(EvaluationContext context)
+    {
+        if (_vertices.Length != vertexCount)       // [!code ++]
+            _vertices = new PbrVertex[vertexCount]; // [!code ++]
+        // fill _vertices ...
+    }
+
+    private PbrVertex[] _vertices = new PbrVertex[0]; // [!code ++]
+    ```
+
+    **Pre-allocate wrapper objects in fields, not in Update():**
+
+    ```csharp
+    // [!code --]
+    private void Update(EvaluationContext context)
+    {
+        var views = new BufferWithViews(); // [!code --]
+        // ...
+    }
+
+    // [!code ++]
+    private void Update(EvaluationContext context)
+    {
+        // reuse _bufferViews, which is allocated once at construction
+    }
+
+    private readonly BufferWithViews _bufferViews = new(); // [!code ++]
+    ```
+
+    GPU buffer wrappers (`BufferWithViews`, `MeshBuffers`, etc.) are always held as `private readonly` fields, never created inside `Update()`.
+  </Accordion>
+
+  <Accordion title="No LINQ in hot paths">
+    LINQ methods allocate enumerators, intermediate arrays, and delegate closures. In per-frame code these add up quickly.
+
+    **Replace LINQ with explicit loops:**
+
+    ```csharp
+    // [!code --]
+    // Bad: allocates enumerator and list on every frame
+    var dirtyInputs = Inputs.Where(s => s.IsDirty).ToList();
+    foreach (var slot in dirtyInputs)
+        Process(slot);
+
+    // [!code ++]
+    // Good: zero allocations
+    for (int i = 0; i < Inputs.Count; i++)
+    {
+        if (Inputs[i].IsDirty)
+            Process(Inputs[i]);
+    }
+    ```
+
+    **Avoid `.Select()` projections in Update():**
+
+    ```csharp
+    // [!code --]
+    var positions = points.Select(p => p.Position).ToArray();
+
+    // [!code ++]
+    if (_positions.Length != points.Count)
+        _positions = new Vector3[points.Count];
+
+    for (int i = 0; i < points.Count; i++)
+        _positions[i] = points[i].Position;
+    ```
+
+    The one exception is code that runs only on explicit user actions (not per frame), where LINQ is fine.
+  </Accordion>
+
+  <Accordion title="Stale reference avoidance">
+    Graph reloads, hot-swapped assemblies, and package changes can invalidate direct object references without warning. A cached `Instance*` or resource pointer that was valid last frame may point to a disposed object this frame.
+
+    **Store IDs, not references:**
+
+    ```csharp
+    // [!code --]
+    // Bad: reference becomes stale after a reload
+    private Instance _targetInstance;
+
+    // [!code ++]
+    // Good: look up via registry each time you need it
+    private Guid _targetInstanceId;
+    ```
+
+    Resolve by GUID through the appropriate registry each time you need the live object. This is slightly more work but safe across reloads and graph edits.
+  </Accordion>
+
+  <Accordion title="GPU resource management">
+    Shader compilation and GPU buffer reallocation are expensive. Keep them out of hot paths.
+
+    **Use dirty flags to gate GPU updates:**
+
+    ```csharp
+    // [!code --]
+    // Bad: recompiles parameters and reallocates buffer every frame
+    private void Update(EvaluationContext context)
+    {
+        var buffer = new Buffer(device, desc); // [!code --]
+        context.DeviceContext.UpdateSubresource(ref _params, buffer);
+    }
+
+    // [!code ++]
+    // Good: update only when inputs have changed
+    private void Update(EvaluationContext context)
+    {
+        if (!Data.DirtyFlag.IsDirty)
+            return;
+
+        // update GPU resources here
+        Data.DirtyFlag.Clear();
+    }
+    ```
+
+    **Use ResourceManager helpers to avoid reallocation:**
+
+    `ResourceManager.SetupStructuredBuffer()` re-uses the existing GPU buffer when the size has not changed. Only call this method when you have new data to upload — not unconditionally every frame.
+
+    ```csharp
+    // Only reallocates if dimensions differ; otherwise uploads in-place
+    ResourceManager.SetupStructuredBuffer(
+        _vertexBufferData,
+        PbrVertex.Stride * vertexCount,
+        PbrVertex.Stride,
+        ref _vertexBuffer);
+    ```
+
+    **Never trigger shader recompilation in Update():**
+
+    Shader resources created with `ResourceManager.CreateShaderResource()` are file-watched automatically. Do not call shader compilation APIs directly inside `Update()`.
+  </Accordion>
+
+  <Accordion title="Dirty flag discipline">
+    The slot dirty-flag system is TiXL's primary mechanism for skipping redundant work. Misusing it wastes CPU time every frame.
+
+    **Always call DirtyFlag.Clear() after writing output:**
+
+    ```csharp
+    Data.Value = _data;
+    Data.DirtyFlag.Clear(); // required — tells downstream slots the value is fresh
+    ```
+
+    Forgetting `Clear()` causes the output to be considered dirty forever, forcing every downstream operator to re-evaluate on every frame even when nothing has changed.
+
+    **Use HasTimeChanged() to skip time-only updates:**
+
+    ```csharp
+    private double _lastUpdateTime;
+
+    private void Update(EvaluationContext context)
+    {
+        if (!context.HasTimeChanged(ref _lastUpdateTime))
+            return;
+
+        // only runs when time has advanced by at least TimeResolutionInBars
+    }
+    ```
+  </Accordion>
+
+  <Accordion title="Profiling in the editor">
+    The Editor includes a **FrameStats** window that shows per-frame timing and update counts. Open it from the Windows menu to identify which operators are consuming the most frame time.
+
+    General profiling workflow:
+
+    1. Open the FrameStats window.
+    2. Isolate the subgraph you want to measure by bypassing unrelated operators.
+    3. Note the baseline frame time.
+    4. Apply your change and compare.
+    5. If frame time increased, check for new allocations (enable the .NET memory profiler) or unnecessary re-evaluations.
+
+    For deep profiling, attach Visual Studio's CPU profiler or dotMemory to the running Editor process and record a few seconds of the render loop.
+  </Accordion>
+</AccordionGroup>
+
+## Quick reference
+
+| Rule | Per-frame code | User-action code |
+|---|---|---|
+| Heap allocation (`new`) | Forbidden | Allowed |
+| LINQ (`.Where`, `.Select`, `.ToList`) | Forbidden | Allowed |
+| Long-lived direct instance references | Forbidden | Avoid |
+| `DirtyFlag.Clear()` after writing output | Required | N/A |
+| Shader recompilation in `Update()` | Forbidden | Avoid |
+| GPU buffer reallocation | Only when size changes | Allowed |
+
+<Tip>
+When reviewing your own code, ask: "Could this line allocate?" If yes and it's in an `Update()` method or editor draw path, find a way to move the allocation to a field initializer or a one-time setup path.
+</Tip>

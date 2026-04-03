@@ -1,0 +1,152 @@
+---
+title: "Point operators"
+description: "GPU point-cloud generation, attribute manipulation, simulation, drawing, and combining operators."
+---
+
+Point operators are one of TiXL's most powerful systems. They work with `BufferWithViews` — a structured GPU buffer where each element represents a **point** with the following attributes:
+
+| Attribute | Type | Description |
+|-----------|------|-------------|
+| `Position` | `Vector3` | World-space position. |
+| `W` | `float` | User-defined scalar (often size, age, or weight). |
+| `Rotation` | `Quaternion` | Per-point orientation. |
+| `Color` | `Vector4` | RGBA colour value. |
+| `F1`, `F2` | `float` | Two additional float channels for custom data. |
+
+Because point buffers live on the GPU and are processed by compute shaders, millions of points can be manipulated at interactive frame rates. Points flow from **generate** to **modify** / **transform** to **draw**, with optional branching through **sim** for physics-based motion and **combine** for merging sets.
+
+<Tip>
+Connect a `PointSimulation` node between your generate and draw operators to add physics. Chain multiple `Sim*` force operators into the simulation for layered behaviours.
+</Tip>
+
+## Subcategories
+
+<AccordionGroup>
+  <Accordion title="generate — create point clouds">
+    Generate operators produce a `BufferWithViews` point list from a geometric description or procedural rule.
+
+    | Operator | Description |
+    |----------|-------------|
+    | `GridPoints` | Generates a regular 2D or 3D grid of points. Parameters: counts per axis, spacing. |
+    | `HexGridPoints` | Points arranged on a hexagonal grid. |
+    | `RadialPoints` | Points arranged in concentric rings or a single circle. |
+    | `SpherePoints` | Points distributed over the surface of a sphere (Fibonacci or UV grid). |
+    | `LinePoints` | Points sampled along a straight line segment. |
+    | `SubdivideLinePoints` | Subdivides an existing line point set for higher resolution curves. |
+    | `PointsOnMesh` | Scatters points over the surface of a `MeshBuffers` by face-area weighting. |
+    | `MeshVerticesToPoints` | Converts mesh vertices directly to a point list, preserving normals and UVs. |
+    | `PointsOnImage` | Places points at pixel positions driven by image luminance (bright pixels = more points). |
+    | `CommonPointSets` | A library of preset point arrangements (e.g., Platonic solid vertices). |
+    | `DoyleSpiralPoints2` | Points arranged on a Doyle spiral (circle packing). |
+    | `BoundingBoxPoints` | Returns the 8 corners of a point set's bounding box. |
+    | `RepetitionPoints` | Repeats a point set N times with optional offset and rotation per repeat. |
+    | `RepeatAtPoints` | *(shared with render/transform)* Stamps a point pattern at each input point's position. |
+    | `PointTrail` | Records the recent history of a single point's position as a trail. |
+    | `PointTrailFast` | Faster, lower-overhead trail with fixed buffer size. |
+  </Accordion>
+
+  <Accordion title="modify — per-point attribute editing">
+    Modify operators run compute shaders over every point in the buffer to read or write attributes.
+
+    | Operator | Description |
+    |----------|-------------|
+    | `RandomizePoints` | Adds random offsets to position, rotation, color, and W. Configurable per-axis, per-channel. |
+    | `AddNoise` | Adds smooth noise to point positions using configurable frequency and amplitude. |
+    | `PointAttributeFromNoise` | Writes a noise value into a selected point attribute (W, F1, F2, Color). |
+    | `SetPointAttributes` | Overrides specific attributes on all points with constant values. |
+    | `MapPointAttributes` | Remaps one attribute to another using a curve or expression. |
+    | `AttributesFromImageChannels` | Samples a `Texture2D` at each point's UV and writes the result into point attributes. |
+    | `SamplePointAttributes_v1` | Samples a texture at each point's position and maps it to attributes. |
+    | `LinearSamplePointAttributes` | Samples attribute values along a linear gradient from start to end point. |
+    | `SamplePointColorAttributes` | Samples colour from a texture and writes it to the `Color` attribute. |
+    | `PointColorWithField` | Evaluates a field at each point's position and writes the result to `Color`. |
+    | `SetAttributesWithPointFields` | Sets multiple attributes using field evaluations simultaneously. |
+    | `FilterPoints` | Removes points that do not match a threshold condition on a chosen attribute. |
+    | `SelectPoints` | Marks a subset of points as selected using attribute criteria. |
+    | `SelectPointsWithSDF` | Selects points inside or outside a signed distance field volume. |
+    | `ClearSomePoints` | Zeroes out attributes on a fraction of points. |
+    | `SortPoints` | Reorders points by a chosen attribute (position, age, W, etc.). |
+    | `ResampleLinePoints` | Resamples a curve point set to a uniform arc-length spacing. |
+    | `TransformWithImage` | Applies per-point transforms driven by a `Texture2D` lookup. |
+    | `SamplePointsByCameraDistance` | Attenuates point attributes by distance from the camera. |
+    | `MoveToSDF` | Moves points towards the zero-isosurface of a signed distance field. |
+    | `CustomPointShader` | Runs a user-authored HLSL compute shader over the point buffer. |
+  </Accordion>
+
+  <Accordion title="transform — spatial point transforms">
+    Transform operators apply geometric operations to point positions and orientations.
+
+    | Operator | Description |
+    |----------|-------------|
+    | `TransformPoints` | Applies translation, rotation, and scale to all points. |
+    | `TransformSomePoints` | Applies a transform to a masked subset of points. |
+    | `SoftTransformPoints` | Smooth-falloff transform influenced by distance from an anchor point. |
+    | `OrientPoints` | Aligns point rotations to face a target or follow a velocity direction. |
+    | `PolarTransformPoints` | Transforms points in polar/cylindrical/spherical coordinate space. |
+    | `BoundPoints` | Constrains point positions to a bounding box or sphere volume. |
+    | `WrapPoints` | Wraps points that leave a boundary back to the opposite side (toroidal space). |
+    | `WrapPointPosition` | Per-axis wrapping of point positions. |
+    | `SnapPointsToGrid` | Snaps point positions to the nearest grid lattice point. |
+    | `SnapToPoints` | Moves each point to the nearest point in a second reference set. |
+    | `ReorientLinePoints` | Recomputes frame (tangent/normal/binormal) along a curve point set. |
+    | `MovePointsToCurveSpace` | Transforms point positions into the local frame of a curve. |
+    | `FindClosestPointsOnMesh` | Projects each point to its closest position on a `MeshBuffers` surface. |
+    | `IkChain` | Applies inverse kinematics to a chain of points. |
+    | `TransformFromClipSpace` | Converts point positions from clip space to world space. |
+  </Accordion>
+
+  <Accordion title="sim — physics simulation">
+    Simulation operators implement time-stepped physics over point buffers. The central operator is `PointSimulation`, which accumulates force operators each frame.
+
+    | Operator | Description |
+    |----------|-------------|
+    | `PointSimulation` | Core simulation loop. Integrates velocity from force operators, applies drag, and updates positions each frame. Connect force operators as children. |
+    | `SamplePointSimAttributes` | Reads simulation-internal attributes (velocity, age, etc.) out of the simulation for use downstream. |
+    | `SimForceOffset` | Applies a constant directional force (gravity, wind) to all points. |
+    | `SimDirectionalOffset` | Offsets positions in a specific world-space direction each frame. |
+    | `SimCentricalOffset` | Pulls or pushes points radially towards or away from a centre point. |
+    | `SimNoiseOffset` | Adds smooth noise-driven positional drift. |
+    | `SimDisplacePoints2d` | 2D displacement force driven by a texture map. |
+  </Accordion>
+
+  <Accordion title="draw — render point clouds">
+    Draw operators consume a `BufferWithViews` point list and produce `Command` output for the render graph.
+
+    | Operator | Description |
+    |----------|-------------|
+    | `DrawPoints` | Draws each point as a single pixel or a sized sprite. |
+    | `DrawPoints2` | Alternative draw with more blending and size options. |
+    | `DrawPointsShaded` | Draws sphere-shaped points with normal-based shading. |
+    | `DrawPointsDOF` | Points with per-point depth-of-field blur. |
+    | `DrawBillboards` | Draws camera-facing billboard quads at each point. |
+    | `DrawLines` | Draws line segments connecting consecutive points. |
+    | `DrawLinesAlt` | Alternative line renderer with different stroke styles. |
+    | `DrawLinesShaded` | Lines with lighting and normal information. |
+    | `DrawLinesBuildup` | Lines that build up over time (trail growth effect). |
+    | `DrawConnectionLines` | Draws lines connecting each point to its N nearest neighbours. |
+    | `DrawRayLines` | Draws lines from point positions in the direction of their normals. |
+    | `DrawRibbons` | Renders ribbon strips along curve point sets with width and twist control. |
+    | `DrawTubes` | Renders solid tubes swept along curve point sets. |
+    | `DrawMovingPoints` | Draws points with velocity-aligned stretch for motion trails. |
+    | `DrawMeshAtPoints2` | GPU-instances a `MeshBuffers` at each point position. |
+    | `VisualizePoints` | Debug visualization showing point positions, normals, and attributes. |
+  </Accordion>
+
+  <Accordion title="combine — merge and split point sets">
+    | Operator | Description |
+    |----------|-------------|
+    | `CombineBuffers` | Concatenates two or more point `BufferWithViews` into a single buffer. |
+    | `BlendPoints` | Linearly interpolates point attributes between two point sets of equal count. |
+    | `SplinePoints` | Fits a smooth Catmull-Rom or Bézier spline through a point set and resamples it. |
+    | `PairPointsForLines` | Creates index pairs connecting each point to the next for line rendering. |
+    | `PairPointsForSplines` | Creates spline control point pairs for smooth curve rendering. |
+    | `PairPointsForGridWalkLines` | Creates line pairs for grid-traversal path visualization. |
+    | `PickPointList` | Selects one `BufferWithViews` from a list by index. |
+  </Accordion>
+
+  <Accordion title="io — point data input and output">
+    | Operator | Description |
+    |----------|-------------|
+    | `PointInfoLines` | Renders text labels next to each point showing attribute values. Useful for debugging point data. |
+  </Accordion>
+</AccordionGroup>
